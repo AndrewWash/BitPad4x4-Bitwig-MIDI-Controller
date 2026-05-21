@@ -2,7 +2,16 @@
 
 Custom firmware that turns a **KPrepublic JJ4x4** macropad (ATmega32A, 16 keys)
 into a class-compliant **USB-MIDI controller** for **Bitwig Studio** — a Drum
-Machine controller with a second device-navigation mode.
+Machine controller with a second device-navigation mode.  
+
+This firmware is for the board featured here: https://kprepublic.com/collections/jj4x4-macropad  
+
+items needed:
+1. JJ4x4 circuit board - $22
+2. one of the cases on that site or build your own - $18-20
+3. 16 MX/ALPS switches - $10-20 depending on the amount you find
+4. 16 keycaps - $10 for cheapo ones
+5. Mini USB cord $$
 
 This is standalone firmware, not a QMK keymap.
 
