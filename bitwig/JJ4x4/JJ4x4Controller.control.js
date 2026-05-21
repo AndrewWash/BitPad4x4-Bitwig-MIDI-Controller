@@ -13,13 +13,13 @@
 // "JJ4x4 MIDI" input port.
 //
 // Credits
-//   Hardware vendor : wash
+//   Hardware vendor : learninglab
 //   Author          : wash
 
 loadAPI(18);
 
 host.defineController(
-    "wash",
+    "learninglab",
     "jj4x4",
     "1.0",
     "6b1d9c20-4a3e-4f51-9c2a-1d9c204a3e4f",
