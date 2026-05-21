@@ -45,7 +45,8 @@ const CC_NEXT_DEVICE  = 25;
 const CC_INSERT_DEV   = 26;
 const CC_DEV_EXPAND   = 27;
 const CC_DEV_REMOTES  = 28;
-const CC_DEV_NESTED   = 29;
+/* CC 29 was CC_DEV_NESTED — removed: isNestedDeviceChainExpanded() is not
+ * available on the cursor device proxy in this Bitwig version. */
 const CC_DEV_WINDOW   = 30;
 
 /* The 16 drum pads always arrive as notes 36..51 (DRUM_LO..DRUM_HI). They are
@@ -81,7 +82,6 @@ function init() {
     /* Toggling these needs the API to know their current value. */
     cursorDevice.isExpanded().markInterested();
     cursorDevice.isRemoteControlsSectionVisible().markInterested();
-    cursorDevice.isNestedDeviceChainExpanded().markInterested();
     cursorDevice.isWindowOpen().markInterested();
 
     /* Re-map the pad notes whenever the drum bank scrolls. Adding the
@@ -137,7 +137,6 @@ function onMidi(status, data1, data2) {
     case CC_INSERT_DEV:  endInsertion.browse();                break;
     case CC_DEV_EXPAND:  cursorDevice.isExpanded().toggle();   break;
     case CC_DEV_REMOTES: cursorDevice.isRemoteControlsSectionVisible().toggle(); break;
-    case CC_DEV_NESTED:  cursorDevice.isNestedDeviceChainExpanded().toggle();    break;
     case CC_DEV_WINDOW:  cursorDevice.isWindowOpen().toggle();                   break;
     default: break;
     }
