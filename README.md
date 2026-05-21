@@ -4,9 +4,7 @@ Custom firmware that turns a **KPrepublic JJ4x4** macropad (ATmega32A, 16 keys)
 into a class-compliant **USB-MIDI controller** for **Bitwig Studio** — a Drum
 Machine controller with a second device-navigation mode.
 
-The ATmega32A has no USB hardware, so USB is bit-banged in software with the
-**V-USB** library. (QMK's MIDI feature does not work on V-USB boards — this is
-standalone firmware, not a QMK keymap.)
+this is standalone firmware, not a QMK keymap.
 
 ## Layout
 
@@ -18,24 +16,42 @@ bitwig/       Bitwig Studio JavaScript controller script
 ## Getting started
 
 1. **Firmware** — see [`firmware/README.md`](firmware/README.md) for the
-   toolchain, build (`make`), and flashing (`make flash`, hold key K11 on
-   plug-in to enter the bootloader).
-2. **Bitwig script** — copy `bitwig/JJ4x4/` into
-   `Documents\Bitwig Studio\Controller Scripts\`, then add it in Bitwig under
+   toolchain, build (`make`), and flashing (`make flash`, hold key K11 (position 5) on
+   plug-in to enter the bootloader). In plain english, download and install QMK Toolkit and do the bootloader steps, select open, open the .hex, hit flash, done.
+   If you want to edit the firmware, you will need to dl QMK MSYS in order to compile it before flashing
+3. **Bitwig script** — copy `bitwig/JJ4x4/` into
+   `Documents\Bitwig Studio\Controller Scripts\`, (or wherever you controller scripts folder is pointing to within bitwig) then add it in Bitwig under
    *Settings → Controllers* and select the **JJ4x4 MIDI** input port.
 
 ## How it works
 
-- **Drum mode** (default): the 16 keys are drum pads (Note On/Off, notes
-  36–51) routed into the selected Drum Machine. The pad layout matches the
-  on-screen grid, and the pads follow the bank's scroll position.
-- **Device mode**: 11 keys send CC commands the controller script turns into
-  track / device / parameter-page navigation, collapse/expand device,
-  show/hide remote controls, show/hide nested device chains, show/hide the
-  device window, and "insert device at end of chain".
-- **Chords** (corner keys): `0+15` flips mode, `0+3` pages the Drum Machine
-  up; holding `12+15` is a drum-nav modifier — release alone to page down,
-  or tap key `9` / `13` to scroll one row up / down.
+layout= 
+| 0  | 1  | 2  | 3  |
+| 4  | 5  | 6  | 7  |
+| 8  | 9  | 10 | 11 |
+| 12 | 13 | 14 | 15 |
+
+0+15=cycle modes/change pg
+
+Pg1: Drum machine mode
+   a. One to one with pad assignments. Use macros to navigate drum machine
+Macros in drum machine mode (pg1): also works as chromatic mode for synths/note devices
+	a. 0+3=move drum machine active pads up 1 full screen
+	b. 12+15=move drum machine active pads down 1 full screen
+	c. 12+15+9=move drum machine active pads up one ROW
+	d. 12+15+13=move drum machine active pads down one ROW
+	
+Pg2: Device+ottopot companion
+	a. 0=Prev Parameter page
+	b. 3=Next parameter page
+	c. 1=collapse/expand device
+	d. 2=show/hide remote controls
+	e. 4=prev device
+	f. 6=show/hide expanded device view
+	g. 7=next device
+	h. 8=up by track (on arranger- can immedialty use device buttons)
+	i. 12=down by track (on arranger- can immedialty use device buttons)
+15=insert device at end of chain
 
 Full command map and CC numbers are in [`firmware/README.md`](firmware/README.md).
 
