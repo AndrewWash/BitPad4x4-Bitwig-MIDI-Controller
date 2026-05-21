@@ -5,13 +5,17 @@
  *
  *   MODE_DRUM   - all 16 keys are drum pads -> Note On/Off, MIDI channel 1.
  *                 Page chords scroll the Bitwig Drum Machine's pad pages.
- *   MODE_DEVICE - 7 keys send momentary CCs (MIDI channel 2) that the
+ *   MODE_DEVICE - 11 keys send momentary CCs (MIDI channel 2) that the
  *                 Bitwig controller script turns into device navigation.
  *
  * Chords (only the four corner keys 0/3/12/15 take part):
  *   keys 0 + 15 -> flip to the next mode          (any mode)
  *   keys 0 + 3  -> drum page up   (CC 16)         (drum mode only)
- *   keys 12 + 15-> drum page down (CC 17)         (drum mode only)
+ *   keys 12 + 15-> drum-nav modifier              (drum mode only)
+ *
+ * The 12+15 modifier is sustained: while both keys are held, key 9 scrolls
+ * one row up (CC 18) and key 13 one row down (CC 19). Releasing the pair
+ * with no row sub-key used scrolls a full page down (CC 17).
  *
  * A corner key's note/CC is held back for CHORD_TICKS ms: if a second key
  * completes a chord in that window the chord fires and both keys are
@@ -31,9 +35,15 @@ enum { MODE_DRUM = 0, MODE_DEVICE, MODE_COUNT };
 #define CH_DEVICE   1
 
 /* ---- Drum mode ---- */
-#define DRUM_BASE_NOTE  36       /* key 0 -> note 36 ... key 15 -> note 51 */
+#define DRUM_BASE_NOTE  36       /* notes 36..51; see drum_note() for layout */
 #define CC_PAGE_UP      16
 #define CC_PAGE_DOWN    17
+#define CC_ROW_UP       18
+#define CC_ROW_DOWN     19
+
+/* ---- Drum-nav modifier sub-keys (held 12+15 + one of these) ---- */
+#define KEY_ROW_UP       9
+#define KEY_ROW_DOWN    13
 
 /* ---- Corner keys ---- */
 #define KEY_TL   0
@@ -46,8 +56,8 @@ enum { MODE_DRUM = 0, MODE_DEVICE, MODE_COUNT };
 
 /* ---- Device mode: key index -> CC number (0xFF = key unused) ---- */
 static const uint8_t device_cc[KEY_COUNT] = {
-    /*  0 */ 22,   /*  1 */ 0xFF, /*  2 */ 0xFF, /*  3 */ 23,
-    /*  4 */ 24,   /*  5 */ 0xFF, /*  6 */ 0xFF, /*  7 */ 25,
+    /*  0 */ 22,   /*  1 */ 27,   /*  2 */ 28,   /*  3 */ 23,
+    /*  4 */ 24,   /*  5 */ 29,   /*  6 */ 30,   /*  7 */ 25,
     /*  8 */ 20,   /*  9 */ 0xFF, /* 10 */ 0xFF, /* 11 */ 0xFF,
     /* 12 */ 21,   /* 13 */ 0xFF, /* 14 */ 0xFF, /* 15 */ 26,
 };
@@ -60,17 +70,29 @@ static uint8_t  kstate[KEY_COUNT];
 static uint8_t  ktimer[KEY_COUNT];       /* counts down while K_PENDING   */
 static uint16_t last_state;              /* matrix state from prev tick   */
 static uint16_t notes_on;                /* drum notes currently sounding */
+static uint8_t  navmod_active;           /* 1 while 12+15 are both held   */
+static uint8_t  navmod_used;             /* 1 if a row sub-key fired      */
 
 static uint8_t is_corner(uint8_t k)
 {
     return (k == KEY_TL || k == KEY_TR || k == KEY_BL || k == KEY_BR);
 }
 
+/* Physical key -> Drum Machine note. The macropad's top row is the Drum
+ * Machine's BOTTOM row, so the row index is flipped: this aligns the
+ * physical pad layout with the on-screen 4x4 grid. Note 36 = bottom-left. */
+static uint8_t drum_note(uint8_t k)
+{
+    uint8_t r = k >> 2;          /* 0 = top physical row  */
+    uint8_t c = k & 3;           /* 0 = left column       */
+    return (uint8_t)(DRUM_BASE_NOTE + (3 - r) * 4 + c);
+}
+
 /* Emit a key's normal "press" action for the active mode. */
 static void emit_press(uint8_t k)
 {
     if (mode == MODE_DRUM) {
-        midi_send_note_on(CH_DRUM, DRUM_BASE_NOTE + k, 127);
+        midi_send_note_on(CH_DRUM, drum_note(k), 127);
         notes_on |= (1u << k);
     } else { /* MODE_DEVICE */
         uint8_t cc = device_cc[k];
@@ -85,7 +107,7 @@ static void emit_press(uint8_t k)
 static void emit_release(uint8_t k)
 {
     if (notes_on & (1u << k)) {
-        midi_send_note_off(CH_DRUM, DRUM_BASE_NOTE + k, 0);
+        midi_send_note_off(CH_DRUM, drum_note(k), 0);
         notes_on &= ~(1u << k);
     }
     /* device-mode CCs are momentary: nothing to do on release */
@@ -111,6 +133,8 @@ static void chord_check(void)
     if (kstate[KEY_TL] == K_PENDING && kstate[KEY_BR] == K_PENDING) {
         consume_pair(KEY_TL, KEY_BR);
         flush_notes();
+        navmod_active = 0;          /* a flip leaves no stale modifier */
+        navmod_used   = 0;
         mode = (mode + 1) % MODE_COUNT;
         leds_set_mode(mode);
         return;
@@ -122,9 +146,13 @@ static void chord_check(void)
             midi_send_cc(CH_DRUM, CC_PAGE_UP, 127);
             return;
         }
+        /* 12+15 is a sustained modifier: while both are held, keys 9/13
+         * scroll by one row; if no row sub-key is used, releasing the
+         * pair scrolls a full page down (see modes_task()). */
         if (kstate[KEY_BL] == K_PENDING && kstate[KEY_BR] == K_PENDING) {
             consume_pair(KEY_BL, KEY_BR);
-            midi_send_cc(CH_DRUM, CC_PAGE_DOWN, 127);
+            navmod_active = 1;
+            navmod_used   = 0;
             return;
         }
     }
@@ -132,9 +160,11 @@ static void chord_check(void)
 
 void modes_init(void)
 {
-    mode       = MODE_DRUM;
-    last_state = 0;
-    notes_on   = 0;
+    mode          = MODE_DRUM;
+    last_state    = 0;
+    notes_on      = 0;
+    navmod_active = 0;
+    navmod_used   = 0;
     for (uint8_t k = 0; k < KEY_COUNT; k++) {
         kstate[k] = K_IDLE;
         ktimer[k] = 0;
@@ -151,10 +181,19 @@ void modes_task(void)
     uint8_t  k;
     last_state = state;
 
-    /* 1. New presses: corner keys wait for a possible chord, others fire. */
+    /* 1. New presses: corner keys wait for a possible chord, others fire.
+     * While the 12+15 drum-nav modifier is held, keys 9/13 are stolen to
+     * scroll one row instead of playing a pad. */
     for (k = 0; k < KEY_COUNT; k++) {
         if (pressed & (1u << k)) {
-            if (is_corner(k)) {
+            if (navmod_active && mode == MODE_DRUM &&
+                (k == KEY_ROW_UP || k == KEY_ROW_DOWN)) {
+                midi_send_cc(CH_DRUM,
+                             (k == KEY_ROW_UP) ? CC_ROW_UP : CC_ROW_DOWN,
+                             127);
+                navmod_used = 1;
+                kstate[k]   = K_CONSUMED;
+            } else if (is_corner(k)) {
                 kstate[k] = K_PENDING;
                 ktimer[k] = CHORD_TICKS;
             } else {
@@ -182,6 +221,14 @@ void modes_task(void)
     /* 4. Releases. */
     for (k = 0; k < KEY_COUNT; k++) {
         if (released & (1u << k)) {
+            /* Releasing either half of the 12+15 modifier ends the hold;
+             * if no row sub-key was used, it scrolls a full page down. */
+            if (navmod_active && (k == KEY_BL || k == KEY_BR)) {
+                if (!navmod_used)
+                    midi_send_cc(CH_DRUM, CC_PAGE_DOWN, 127);
+                navmod_active = 0;
+                navmod_used   = 0;
+            }
             if (kstate[k] == K_PENDING) {
                 /* Tapped and released inside the chord window: emit the
                  * quick press now so the tap is not lost. */

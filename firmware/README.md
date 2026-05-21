@@ -17,8 +17,12 @@ Two modes, switched by a chord:
 
 | | Drum mode (default) | Device mode |
 |---|---|---|
-| 16 keys | Drum pads — Note On/Off, notes 36–51, MIDI ch 1 | 7 navigation commands (see below), MIDI ch 2 |
+| 16 keys | Drum pads — Note On/Off, notes 36–51, MIDI ch 1 | 11 navigation commands (see below), MIDI ch 2 |
 | Backlight | dim | bright |
+
+The pad layout is aligned to the on-screen Drum Machine grid: the macropad's
+top row plays the Drum Machine's top row. Drum notes follow the bank's scroll
+position (set by the Bitwig script), so paging/rowing changes which pads play.
 
 **Chords** (only the four corner keys 0 / 3 / 12 / 15 take part):
 
@@ -26,22 +30,34 @@ Two modes, switched by a chord:
 |---|---|
 | 0 + 15 | Flip to the next mode (cycles) |
 | 0 + 3  | Drum page up — `CC 16` (drum mode only) |
-| 12 + 15 | Drum page down — `CC 17` (drum mode only) |
+| 12 + 15 | Drum-nav modifier (drum mode only) — see below |
+
+**Drum-nav modifier** — hold `12 + 15`, then:
+
+| While 12+15 held | Action |
+|---|---|
+| (release with no sub-key) | Drum page down — `CC 17` |
+| tap key 9 | Scroll one row up — `CC 18` |
+| tap key 13 | Scroll one row down — `CC 19` |
 
 **Device-mode key map** (momentary `CC = 127` on press, MIDI ch 2):
 
 ```
- 0 prevParamPage   1 --            2 --     3 nextParamPage
- 4 prevDevice      5 --            6 --     7 nextDevice
- 8 trackUp         9 --           10 --    11 --
-12 trackDown      13 --           14 --    15 insertDevice
+ 0 prevParamPage   1 collapseDev   2 showRemotes   3 nextParamPage
+ 4 prevDevice      5 nestChain     6 devWindow     7 nextDevice
+ 8 trackUp         9 --           10 --           11 --
+12 trackDown      13 --           14 --           15 insertDevice
 ```
 
 | Key | Command | CC |
 |---|---|---|
 | 0 | Previous parameter page | 22 |
+| 1 | Collapse / expand device | 27 |
+| 2 | Show / hide remote controls | 28 |
 | 3 | Next parameter page | 23 |
 | 4 | Previous device | 24 |
+| 5 | Show / hide nested device chains | 29 |
+| 6 | Show / hide device window (expanded device view) | 30 |
 | 7 | Next device | 25 |
 | 8 | Track up | 20 |
 | 12 | Track down | 21 |
@@ -120,8 +136,11 @@ Build the confidence up in stages — don't debug everything at once:
    no yellow `!`. A `!` means a USB descriptor or V-USB timing problem.
 2. **Raw MIDI.** Install **MIDI-OX** (free). Open the *JJ4x4 MIDI* input and
    its monitor window. Press each key — you should see Note On/Off (drum
-   mode) with no chatter or stuck notes. Test the chords (0+15 flip,
-   0+3 / 12+15 paging) and device mode CCs.
+   mode) with no chatter or stuck notes. Test the chords: `0+15` flip,
+   `0+3` page up (`CC 16`), `12+15` tapped → page down (`CC 17`) on release,
+   `12+15` held + tap `9`/`13` → row up/down (`CC 18`/`19`) with no `CC 17`.
+   Test device-mode CCs, including key 1 (`CC 27`), key 2 (`CC 28`),
+   key 5 (`CC 29`) and key 6 (`CC 30`).
 3. **Bitwig.** Install the controller script (see `../bitwig/`), load a
    project with a Drum Machine, and test pads + navigation end-to-end.
 

@@ -29,13 +29,13 @@ main.elf: $(OBJECTS)
 
 main.hex: main.elf
 	$(OBJCOPY) -j .text -j .data -O ihex main.elf main.hex
-	$(SIZE) --mcu=$(DEVICE) --format=avr main.elf
+	$(SIZE) --format=berkeley main.elf
 
 flash: main.hex
 	bootloadHID -r main.hex
 
 size: main.elf
-	$(SIZE) --mcu=$(DEVICE) --format=avr main.elf
+	$(SIZE) --format=berkeley main.elf
 
 clean:
 	rm -f *.o *.elf *.hex usbdrv/*.o

@@ -27,12 +27,15 @@ bitwig/       Bitwig Studio JavaScript controller script
 ## How it works
 
 - **Drum mode** (default): the 16 keys are drum pads (Note On/Off, notes
-  36–51) routed straight into the selected Drum Machine.
-- **Device mode**: 7 keys send CC commands the controller script turns into
-  track / device / parameter-page navigation and "insert device at end of
-  chain".
-- **Chords** (corner keys): `0+15` flips mode, `0+3` / `12+15` page the Drum
-  Machine pad pages.
+  36–51) routed into the selected Drum Machine. The pad layout matches the
+  on-screen grid, and the pads follow the bank's scroll position.
+- **Device mode**: 11 keys send CC commands the controller script turns into
+  track / device / parameter-page navigation, collapse/expand device,
+  show/hide remote controls, show/hide nested device chains, show/hide the
+  device window, and "insert device at end of chain".
+- **Chords** (corner keys): `0+15` flips mode, `0+3` pages the Drum Machine
+  up; holding `12+15` is a drum-nav modifier — release alone to page down,
+  or tap key `9` / `13` to scroll one row up / down.
 
 Full command map and CC numbers are in [`firmware/README.md`](firmware/README.md).
 
