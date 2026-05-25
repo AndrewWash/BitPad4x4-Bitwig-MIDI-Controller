@@ -12,8 +12,10 @@
 #include "leds.h"
 #include "board.h"
 
-/* Brightness per mode index (0..255). mode 0 = drum, mode 1 = device. */
-static const uint8_t mode_brightness[] = { 40, 255 };
+/* Brightness per mode index (0..255). mode 0 = drum, 1 = device,
+ * 2 = clip-nav. Three visibly distinct levels so the active mode is
+ * readable at a glance. */
+static const uint8_t mode_brightness[] = { 40, 160, 255 };
 
 void leds_init(void)
 {

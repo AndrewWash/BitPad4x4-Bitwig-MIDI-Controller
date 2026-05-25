@@ -13,12 +13,12 @@ standalone firmware, not a QMK keymap.
 
 ## What it does
 
-Two modes, switched by a chord:
+Three modes, cycled by a chord:
 
-| | Drum mode (default) | Device mode |
-|---|---|---|
-| 16 keys | Drum pads — Note On/Off, notes 36–51, MIDI ch 1 | 11 navigation commands (see below), MIDI ch 2 |
-| Backlight | dim | bright |
+| | Drum mode (default) | Device mode | Clip-nav mode |
+|---|---|---|---|
+| 16 keys | Drum pads — Note On/Off, notes 36–51, MIDI ch 1 | 16 navigation commands, MIDI ch 2 | 16 clip-launcher commands incl. state-aware looper, MIDI ch 3 |
+| Backlight | dim (40) | mid (160) | bright (255) |
 
 The pad layout is aligned to the on-screen Drum Machine grid: the macropad's
 top row plays the Drum Machine's top row. Drum notes follow the bank's scroll
@@ -28,40 +28,80 @@ position (set by the Bitwig script), so paging/rowing changes which pads play.
 
 | Keys | Action |
 |---|---|
-| 0 + 15 | Flip to the next mode (cycles) |
-| 0 + 3  | Drum page up — `CC 16` (drum mode only) |
-| 12 + 15 | Drum-nav modifier (drum mode only) — see below |
+| 0 + 15 | Flip to the next mode (cycles drum > device > clip-nav) |
+| 0 + 3  | Drum-nav modifier (drum mode only) — see below |
+| 12 + 15 | Drum page down — `CC 17` (drum mode only) |
 
-**Drum-nav modifier** — hold `12 + 15`, then:
+**Drum-nav modifier** — hold `0 + 3`, then:
 
-| While 12+15 held | Action |
+| While 0+3 held | Action |
 |---|---|
-| (release with no sub-key) | Drum page down — `CC 17` |
-| tap key 9 | Scroll one row up — `CC 18` |
-| tap key 13 | Scroll one row down — `CC 19` |
+| (release with no sub-key) | Drum page up — `CC 16` |
+| tap key 1 | Scroll one row up — `CC 18` |
+| tap key 5 | Scroll one row down — `CC 19` |
 
 **Device-mode key map** (momentary `CC = 127` on press, MIDI ch 2):
 
 ```
- 0 prevParamPage   1 collapseDev   2 showRemotes   3 nextParamPage
- 4 prevDevice      5 nestChain     6 devWindow     7 nextDevice
- 8 trackUp         9 --           10 --           11 --
-12 trackDown      13 --           14 --           15 insertDevice
+ 0 play          1 trackUp       2 stop          3 record
+ 4 prevDevice    5 trackDown     6 nextDevice    7 undo
+ 8 arm           9 overdub      10 devWindow    11 insertDev
+12 prevParam    13 devRemotes   14 devExpand    15 nextParam
 ```
 
 | Key | Command | CC |
 |---|---|---|
-| 0 | Previous parameter page | 22 |
-| 1 | Collapse / expand device | 27 |
-| 2 | Show / hide remote controls | 28 |
-| 3 | Next parameter page | 23 |
+| 0 | Global play | 31 |
+| 1 | Track up | 20 |
+| 2 | Global stop | 32 |
+| 3 | Global record toggle | 33 |
 | 4 | Previous device | 24 |
-| 5 | Show / hide nested device chains | 29 |
-| 6 | Show / hide device window (expanded device view) | 30 |
-| 7 | Next device | 25 |
-| 8 | Track up | 20 |
-| 12 | Track down | 21 |
-| 15 | Insert device at end of chain | 26 |
+| 5 | Track down | 21 |
+| 6 | Next device | 25 |
+| 7 | Global undo | 34 |
+| 8 | Toggle arm (cursor track) | 35 |
+| 9 | Toggle clip-launcher overdub | 36 |
+| 10 | Show / hide device window (expanded device view) | 30 |
+| 11 | Add device after (open browser at end of chain) | 26 |
+| 12 | Previous remote (parameter) page | 22 |
+| 13 | Show / hide remote controls section | 28 |
+| 14 | Collapse / expand device | 27 |
+| 15 | Next remote (parameter) page | 23 |
+
+**Clip-nav-mode key map** (momentary `CC = 127` on press, MIDI ch 3):
+
+```
+ 0 play          1 trackUp       2 stop          3 record
+ 4 clipLeft      5 trackDown     6 clipRight     7 undo
+ 8 arm           9 overdub      10 (reserved)   11 looper
+12 clipPlay     13 clipStop     14 clipRec      15 clipNew
+```
+
+| Key | Command | CC |
+|---|---|---|
+| 0 | Global play | 31 |
+| 1 | Track up (shared with device mode) | 20 |
+| 2 | Global stop | 32 |
+| 3 | Global record toggle | 33 |
+| 4 | Clip selection left (prev focused slot) | 39 |
+| 5 | Track down (shared with device mode) | 21 |
+| 6 | Clip selection right (next focused slot) | 40 |
+| 7 | Global undo | 34 |
+| 8 | Toggle arm (cursor track) | 35 |
+| 9 | Toggle clip-launcher overdub | 36 |
+| 10 | Reserved — assigned for future script-side use | 41 |
+| 11 | **Looper** (state-aware: arm > rec > play > overdub) | 42 |
+| 12 | Play focused clip | 43 |
+| 13 | Stop focused clip / track | 44 |
+| 14 | Record into focused clip | 45 |
+| 15 | Create new (empty) clip in focused slot | 46 |
+
+Shared CCs (Global play / stop / record / undo / arm / overdub) are
+identical between device mode and clip-nav mode. The script dispatches
+purely by CC, so the same action is triggered regardless of which mode
+produced it. All 16 keys in device and clip-nav modes are CC-assigned —
+adding behaviour to the "reserved" key 10 of clip-nav is a script-only
+change, no re-flash needed.
 
 A corner key's note/CC is delayed ~30 ms (the chord window); the other 12
 keys fire instantly.
@@ -75,7 +115,7 @@ firmware/
   board.h       pin map (from QMK keyboards/kprepublic/jj4x4/keyboard.json)
   midi.c/.h     USB-MIDI descriptors + 4-byte-packet send queue
   matrix.c/.h   4x4 COL2ROW scan + debounce
-  modes.c/.h    mode state machine + chord detection + key->MIDI map
+  modes.c/.h   mode state machine + chord detection + key->MIDI map
   leds.c/.h     PD4 backlight feedback (mode brightness)
   Makefile      avr-gcc build + bootloadHID flash
   usbdrv/       V-USB library (obdev), used unmodified
@@ -136,11 +176,13 @@ Build the confidence up in stages — don't debug everything at once:
    no yellow `!`. A `!` means a USB descriptor or V-USB timing problem.
 2. **Raw MIDI.** Install **MIDI-OX** (free). Open the *JJ4x4 MIDI* input and
    its monitor window. Press each key — you should see Note On/Off (drum
-   mode) with no chatter or stuck notes. Test the chords: `0+15` flip,
-   `0+3` page up (`CC 16`), `12+15` tapped → page down (`CC 17`) on release,
-   `12+15` held + tap `9`/`13` → row up/down (`CC 18`/`19`) with no `CC 17`.
-   Test device-mode CCs, including key 1 (`CC 27`), key 2 (`CC 28`),
-   key 5 (`CC 29`) and key 6 (`CC 30`).
+   mode) with no chatter or stuck notes. Test the chords: `0+15` flip
+   (cycles through three brightness levels), `12+15` page down (`CC 17`),
+   `0+3` held then released with no sub-key → page up (`CC 16`),
+   `0+3` held + tap `1` → row up (`CC 18`), `0+3` held + tap `5` → row
+   down (`CC 19`). Confirm the old `12+15+9` / `12+15+13` chords no
+   longer fire `CC 18/19`. In device + clip-nav modes, confirm every key
+   sends its assigned CC.
 3. **Bitwig.** Install the controller script (see `../bitwig/`), load a
    project with a Drum Machine, and test pads + navigation end-to-end.
 

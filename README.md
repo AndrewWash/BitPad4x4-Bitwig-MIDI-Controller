@@ -2,7 +2,7 @@
 
 Custom firmware that turns a **KPrepublic JJ4x4** macropad (ATmega32A, 16 keys)
 into a class-compliant **USB-MIDI controller** for **Bitwig Studio** — a Drum
-Machine controller with a second device-navigation mode.  
+Machine controller with two extra navigation/performance modes.
 
 This firmware is for the board featured here: https://kprepublic.com/collections/jj4x4-macropad  
 
@@ -50,7 +50,9 @@ The 16 keys are numbered 0–15:
 12  13  14  15
 ```
 
-Press **`0 + 15`** to cycle modes / change page.
+Press **`0 + 15`** to cycle modes (drum → device → clip-nav → drum). The
+backlight steps through three brightness levels so the active mode is
+readable at a glance.
 
 ### Page 1 — Drum Machine mode
 
@@ -59,25 +61,61 @@ Machine. Also works as a chromatic mode for synths / note devices.
 
 | Chord            | Action                                  |
 |------------------|-----------------------------------------|
-| `0 + 3`          | Move active pads up one full screen     |
+| `0 + 3`          | Move active pads up one full screen (release with no sub-key) |
+| `0 + 3` + `1`    | Move active pads up one row             |
+| `0 + 3` + `5`    | Move active pads down one row           |
 | `12 + 15`        | Move active pads down one full screen   |
-| `12 + 15 + 9`    | Move active pads up one row             |
-| `12 + 15 + 13`   | Move active pads down one row           |
 
-### Page 2 — Device + Ottopot companion
+### Page 2 — Device mode
 
-| Key  | Action                                                        |
-|------|---------------------------------------------------------------|
-| `0`  | Previous parameter page                                       |
-| `1`  | Collapse / expand device                                      |
-| `2`  | Show / hide remote controls                                   |
-| `3`  | Next parameter page                                           |
-| `4`  | Previous device                                               |
-| `6`  | Show / hide expanded device view                              |
-| `7`  | Next device                                                   |
-| `8`  | Track up (on the arranger — device buttons usable immediately) |
-| `12` | Track down (on the arranger — device buttons usable immediately) |
-| `15` | Insert device at end of chain                                 |
+Every pad is assigned (16/16). Adding behaviour to any pad later is a
+controller-script change, not a re-flash.
+
+| Key  | Action                                              |
+|------|-----------------------------------------------------|
+| `0`  | Global play                                         |
+| `1`  | Track up                                            |
+| `2`  | Global stop                                         |
+| `3`  | Global record toggle                                |
+| `4`  | Previous device                                     |
+| `5`  | Track down                                          |
+| `6`  | Next device                                         |
+| `7`  | Global undo                                         |
+| `8`  | Toggle arm (cursor track)                           |
+| `9`  | Toggle clip-launcher overdub                        |
+| `10` | Show / hide expanded device view                    |
+| `11` | Add device after (browse at end of chain)           |
+| `12` | Previous remote (parameter) page                    |
+| `13` | Show / hide remote controls section                 |
+| `14` | Collapse / expand device                            |
+| `15` | Next remote (parameter) page                        |
+
+### Page 3 — Clip Nav mode
+
+A streamlined create / record / play / undo workflow on the clip launcher.
+The vertical pad pair (`1`/`5`) moves the cursor track; the horizontal
+pair (`4`/`6`) moves the focused slot within that track. Keys 12-15 act
+on the focused slot. The looper key (11) is state-aware and cycles
+arm → record → play → overdub on one button.
+
+| Key  | Action                                              |
+|------|-----------------------------------------------------|
+| `0`  | Global play                                         |
+| `1`  | Track up                                            |
+| `2`  | Global stop                                         |
+| `3`  | Global record toggle                                |
+| `4`  | Clip selection left (prev focused slot)             |
+| `5`  | Track down                                          |
+| `6`  | Clip selection right (next focused slot)            |
+| `7`  | Global undo                                         |
+| `8`  | Toggle arm (cursor track)                           |
+| `9`  | Toggle clip-launcher overdub                        |
+| `10` | *(reserved — CC assigned for future use)*           |
+| `11` | **Looper** — state-aware arm > rec > play > overdub |
+| `12` | Play focused clip                                   |
+| `13` | Stop focused clip / track                           |
+| `14` | Record into focused clip                            |
+| `15` | Create new (empty) clip in focused slot             |
 
 Full command map and CC numbers are in [`firmware/README.md`](firmware/README.md).
 
