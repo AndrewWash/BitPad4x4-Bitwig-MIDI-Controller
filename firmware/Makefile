@@ -18,9 +18,9 @@ SIZE    = avr-size
 CFLAGS  = -Wall -Os -std=gnu99 -DF_CPU=$(F_CPU) -I. -Iusbdrv -mmcu=$(DEVICE)
 
 OBJECTS = usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o \
-          main.o midi.o matrix.o modes.o leds.o
+          main.o midi.o matrix.o modes.o leds.o underglow.o
 
-HEADERS = usbconfig.h board.h midi.h matrix.h modes.h leds.h
+HEADERS = usbconfig.h board.h midi.h matrix.h modes.h leds.h underglow.h
 
 all: main.hex
 
@@ -41,7 +41,7 @@ clean:
 	rm -f *.o *.elf *.hex usbdrv/*.o
 
 # Application objects depend on all firmware headers (rebuild on any change).
-main.o midi.o matrix.o modes.o leds.o: $(HEADERS)
+main.o midi.o matrix.o modes.o leds.o underglow.o: $(HEADERS)
 # V-USB objects depend on usbconfig.h.
 $(OBJECTS): usbconfig.h
 

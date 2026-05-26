@@ -22,6 +22,7 @@
 #include "matrix.h"
 #include "modes.h"
 #include "leds.h"
+#include "underglow.h"
 
 /* Timer0 in CTC mode, prescaler 64: (12 MHz / 64 / 188) ~= 1.0 ms. */
 static void timer_init(void)
@@ -48,6 +49,7 @@ int main(void)
 
     matrix_init();
     leds_init();
+    underglow_init();
     midi_init();
     timer_init();
 

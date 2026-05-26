@@ -51,8 +51,12 @@ The 16 keys are numbered 0–15:
 ```
 
 Press **`0 + 15`** to cycle modes (drum → device → clip-nav → drum). The
-backlight steps through three brightness levels so the active mode is
-readable at a glance.
+backlight steps through three brightness levels and the 4 underglow LEDs
+change color (blue / green / magenta) so the active mode is readable at
+a glance.
+
+Press **`3 + 12`** (opposite diagonal) to cycle the underglow brightness
+through 5 levels (very dim → max → wrap).
 
 ### Page 1 — Drum Machine mode
 

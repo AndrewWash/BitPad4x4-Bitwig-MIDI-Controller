@@ -19,6 +19,7 @@ Three modes, cycled by a chord:
 |---|---|---|---|
 | 16 keys | Drum pads — Note On/Off, notes 36–51, MIDI ch 1 | 16 navigation commands, MIDI ch 2 | 16 clip-launcher commands incl. state-aware looper, MIDI ch 3 |
 | Backlight | dim (40) | mid (160) | bright (255) |
+| Underglow | blue | green | magenta |
 
 The pad layout is aligned to the on-screen Drum Machine grid: the macropad's
 top row plays the Drum Machine's top row. Drum notes follow the bank's scroll
@@ -29,6 +30,7 @@ position (set by the Bitwig script), so paging/rowing changes which pads play.
 | Keys | Action |
 |---|---|
 | 0 + 15 | Flip to the next mode (cycles drum > device > clip-nav) |
+| 3 + 12 | Cycle underglow brightness (5 levels, any mode) |
 | 0 + 3  | Drum-nav modifier (drum mode only) — see below |
 | 12 + 15 | Drum page down — `CC 17` (drum mode only) |
 
@@ -117,6 +119,7 @@ firmware/
   matrix.c/.h   4x4 COL2ROW scan + debounce
   modes.c/.h   mode state machine + chord detection + key->MIDI map
   leds.c/.h     PD4 backlight feedback (mode brightness)
+  underglow.c/.h  4 WS2812 RGB underglow over I2C->ATtiny85 (PC0/PC1)
   Makefile      avr-gcc build + bootloadHID flash
   usbdrv/       V-USB library (obdev), used unmodified
 ```
@@ -177,13 +180,19 @@ Build the confidence up in stages — don't debug everything at once:
 2. **Raw MIDI.** Install **MIDI-OX** (free). Open the *JJ4x4 MIDI* input and
    its monitor window. Press each key — you should see Note On/Off (drum
    mode) with no chatter or stuck notes. Test the chords: `0+15` flip
-   (cycles through three brightness levels), `12+15` page down (`CC 17`),
-   `0+3` held then released with no sub-key → page up (`CC 16`),
-   `0+3` held + tap `1` → row up (`CC 18`), `0+3` held + tap `5` → row
-   down (`CC 19`). Confirm the old `12+15+9` / `12+15+13` chords no
-   longer fire `CC 18/19`. In device + clip-nav modes, confirm every key
-   sends its assigned CC.
-3. **Bitwig.** Install the controller script (see `../bitwig/`), load a
+   (cycles backlight brightness *and* underglow color), `12+15` page down
+   (`CC 17`), `0+3` held then released with no sub-key → page up
+   (`CC 16`), `0+3` held + tap `1` → row up (`CC 18`), `0+3` held + tap
+   `5` → row down (`CC 19`). Confirm the old `12+15+9` / `12+15+13`
+   chords no longer fire `CC 18/19`. In device + clip-nav modes, confirm
+   every key sends its assigned CC.
+3. **Underglow.** On boot the 4 underglow LEDs light **blue** at medium
+   brightness. `0+15` should cycle the color blue → green → magenta →
+   blue in lock-step with the backlight. `3+12` (opposite diagonal)
+   should step the underglow brightness through 5 levels and wrap,
+   without changing the color and without emitting MIDI from key 3 or
+   key 12.
+4. **Bitwig.** Install the controller script (see `../bitwig/`), load a
    project with a Drum Machine, and test pads + navigation end-to-end.
 
 ## Troubleshooting
@@ -200,6 +209,12 @@ Build the confidence up in stages — don't debug everything at once:
   bootloader. Repeat the K11-held plug-in.
 - **Backlight looks inverted** — the LED is wired active-low; see the note
   in `leds.c`.
+- **Underglow stays dark, backlight works** — the ATtiny85 isn't ACKing
+  the I²C write. Check: (a) the board variant actually has the 4
+  underglow LEDs populated (some JJ4x4 batches ship without them);
+  (b) try raising `TWBR` in `underglow.c` (e.g. `32` ≈ 170 kHz) in case
+  the ATtiny firmware is slow; (c) confirm nothing else is driving
+  PC0/PC1. Failure is silent by design — USB and backlight keep working.
 
 ## Licensing / credits
 

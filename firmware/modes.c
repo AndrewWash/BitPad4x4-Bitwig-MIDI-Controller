@@ -15,6 +15,7 @@
  *
  * Chords (only the four corner keys 0/3/12/15 take part):
  *   keys 0 + 15 -> flip to the next mode                 (any mode)
+ *   keys 3 + 12 -> cycle underglow brightness (5 levels) (any mode)
  *   keys 0 + 3  -> drum-nav modifier                     (drum mode only)
  *   keys 12 + 15-> drum page down (CC 17, immediate)     (drum mode only)
  *
@@ -31,6 +32,7 @@
 #include "matrix.h"
 #include "midi.h"
 #include "leds.h"
+#include "underglow.h"
 
 /* ---- Modes ---- */
 enum { MODE_DRUM = 0, MODE_DEVICE, MODE_CLIPNAV, MODE_COUNT };
@@ -154,6 +156,15 @@ static void chord_check(void)
         navmod_used   = 0;
         mode = (mode + 1) % MODE_COUNT;
         leds_set_mode(mode);
+        underglow_set_mode(mode);
+        return;
+    }
+
+    /* 3+12 (opposite diagonal): cycle underglow brightness, every mode. */
+    if (kstate[KEY_TR] == K_PENDING && kstate[KEY_BL] == K_PENDING) {
+        consume_pair(KEY_TR, KEY_BL);
+        flush_notes();
+        underglow_cycle_brightness();
         return;
     }
 
@@ -188,6 +199,7 @@ void modes_init(void)
         ktimer[k] = 0;
     }
     leds_set_mode(mode);
+    underglow_set_mode(mode);
 }
 
 void modes_task(void)
