@@ -1,21 +1,27 @@
 /* modes.c - mode state machine, chord detection, and key -> MIDI mapping.
  *
- * Two modes, cycled by the mode-flip chord (extensible: add entries to the
+ * Three modes, cycled by the mode-flip chord (extensible: add entries to the
  * mode enum and the dispatch in emit_press/emit_release):
  *
- *   MODE_DRUM   - all 16 keys are drum pads -> Note On/Off, MIDI channel 1.
- *                 Page chords scroll the Bitwig Drum Machine's pad pages.
- *   MODE_DEVICE - 11 keys send momentary CCs (MIDI channel 2) that the
- *                 Bitwig controller script turns into device navigation.
+ *   MODE_DRUM    - all 16 keys are drum pads -> Note On/Off, MIDI channel 1.
+ *                  Nav chords scroll the Bitwig Drum Machine's pad pages.
+ *   MODE_DEVICE  - 16 keys send momentary CCs (MIDI channel 2) that the
+ *                  Bitwig controller script turns into device + transport
+ *                  navigation. Every key has a CC so future tweaks are
+ *                  script-only (no re-flash).
+ *   MODE_CLIPNAV - 16 keys send momentary CCs (MIDI channel 3) for a
+ *                  streamlined clip-launcher create/record/play workflow,
+ *                  including a state-aware looper key.
  *
  * Chords (only the four corner keys 0/3/12/15 take part):
- *   keys 0 + 15 -> flip to the next mode          (any mode)
- *   keys 0 + 3  -> drum page up   (CC 16)         (drum mode only)
- *   keys 12 + 15-> drum-nav modifier              (drum mode only)
+ *   keys 0 + 15 -> flip to the next mode                 (any mode)
+ *   keys 3 + 12 -> cycle underglow brightness (5 levels) (any mode)
+ *   keys 0 + 3  -> drum-nav modifier                     (drum mode only)
+ *   keys 12 + 15-> drum page down (CC 17, immediate)     (drum mode only)
  *
- * The 12+15 modifier is sustained: while both keys are held, key 9 scrolls
- * one row up (CC 18) and key 13 one row down (CC 19). Releasing the pair
- * with no row sub-key used scrolls a full page down (CC 17).
+ * The 0+3 modifier is sustained: while both keys are held, key 1 scrolls
+ * one row up (CC 18) and key 5 one row down (CC 19). Releasing the pair
+ * with no row sub-key used scrolls a full page up (CC 16).
  *
  * A corner key's note/CC is held back for CHORD_TICKS ms: if a second key
  * completes a chord in that window the chord fires and both keys are
@@ -26,13 +32,15 @@
 #include "matrix.h"
 #include "midi.h"
 #include "leds.h"
+#include "underglow.h"
 
 /* ---- Modes ---- */
-enum { MODE_DRUM = 0, MODE_DEVICE, MODE_COUNT };
+enum { MODE_DRUM = 0, MODE_DEVICE, MODE_CLIPNAV, MODE_COUNT };
 
 /* ---- MIDI channels (0-based: 0 = MIDI channel 1) ---- */
 #define CH_DRUM     0
 #define CH_DEVICE   1
+#define CH_CLIPNAV  2
 
 /* ---- Drum mode ---- */
 #define DRUM_BASE_NOTE  36       /* notes 36..51; see drum_note() for layout */
@@ -41,9 +49,9 @@ enum { MODE_DRUM = 0, MODE_DEVICE, MODE_COUNT };
 #define CC_ROW_UP       18
 #define CC_ROW_DOWN     19
 
-/* ---- Drum-nav modifier sub-keys (held 12+15 + one of these) ---- */
-#define KEY_ROW_UP       9
-#define KEY_ROW_DOWN    13
+/* ---- Drum-nav modifier sub-keys (held 0+3 + one of these) ---- */
+#define KEY_ROW_UP       1
+#define KEY_ROW_DOWN     5
 
 /* ---- Corner keys ---- */
 #define KEY_TL   0
@@ -54,12 +62,23 @@ enum { MODE_DRUM = 0, MODE_DEVICE, MODE_COUNT };
 /* ---- Chord timing ---- */
 #define CHORD_TICKS  30          /* ~30 ms decision window */
 
-/* ---- Device mode: key index -> CC number (0xFF = key unused) ---- */
+/* ---- Device mode: key index -> CC number. Every key is assigned so the
+ * script can add behaviour to any pad without a firmware change. */
 static const uint8_t device_cc[KEY_COUNT] = {
-    /*  0 */ 22,   /*  1 */ 27,   /*  2 */ 28,   /*  3 */ 23,
-    /*  4 */ 24,   /*  5 */ 29,   /*  6 */ 30,   /*  7 */ 25,
-    /*  8 */ 20,   /*  9 */ 0xFF, /* 10 */ 0xFF, /* 11 */ 0xFF,
-    /* 12 */ 21,   /* 13 */ 0xFF, /* 14 */ 0xFF, /* 15 */ 26,
+    /*  0 */ 31,   /*  1 */ 20,   /*  2 */ 32,   /*  3 */ 33,
+    /*  4 */ 24,   /*  5 */ 21,   /*  6 */ 25,   /*  7 */ 34,
+    /*  8 */ 35,   /*  9 */ 36,   /* 10 */ 30,   /* 11 */ 26,
+    /* 12 */ 22,   /* 13 */ 28,   /* 14 */ 27,   /* 15 */ 23,
+};
+
+/* ---- Clip-nav mode: key index -> CC number. Every key assigned.
+ * Keys 1/5 (vertical pad pair) = track up/down, shared with device mode.
+ * Keys 4/6 (horizontal pad pair) = clip-focus prev/next within slot bank. */
+static const uint8_t clipnav_cc[KEY_COUNT] = {
+    /*  0 */ 31,   /*  1 */ 20,   /*  2 */ 32,   /*  3 */ 33,
+    /*  4 */ 39,   /*  5 */ 21,   /*  6 */ 40,   /*  7 */ 34,
+    /*  8 */ 35,   /*  9 */ 36,   /* 10 */ 41,   /* 11 */ 42,
+    /* 12 */ 43,   /* 13 */ 44,   /* 14 */ 45,   /* 15 */ 46,
 };
 
 /* ---- Per-key chord/press state ---- */
@@ -70,7 +89,7 @@ static uint8_t  kstate[KEY_COUNT];
 static uint8_t  ktimer[KEY_COUNT];       /* counts down while K_PENDING   */
 static uint16_t last_state;              /* matrix state from prev tick   */
 static uint16_t notes_on;                /* drum notes currently sounding */
-static uint8_t  navmod_active;           /* 1 while 12+15 are both held   */
+static uint8_t  navmod_active;           /* 1 while 0+3 are both held     */
 static uint8_t  navmod_used;             /* 1 if a row sub-key fired      */
 
 static uint8_t is_corner(uint8_t k)
@@ -94,10 +113,10 @@ static void emit_press(uint8_t k)
     if (mode == MODE_DRUM) {
         midi_send_note_on(CH_DRUM, drum_note(k), 127);
         notes_on |= (1u << k);
-    } else { /* MODE_DEVICE */
-        uint8_t cc = device_cc[k];
-        if (cc != 0xFF)
-            midi_send_cc(CH_DEVICE, cc, 127);
+    } else if (mode == MODE_DEVICE) {
+        midi_send_cc(CH_DEVICE, device_cc[k], 127);
+    } else { /* MODE_CLIPNAV */
+        midi_send_cc(CH_CLIPNAV, clipnav_cc[k], 127);
     }
 }
 
@@ -110,7 +129,7 @@ static void emit_release(uint8_t k)
         midi_send_note_off(CH_DRUM, drum_note(k), 0);
         notes_on &= ~(1u << k);
     }
-    /* device-mode CCs are momentary: nothing to do on release */
+    /* device/clip-nav CCs are momentary: nothing to do on release */
 }
 
 /* Release every drum note that is still sounding (used on a mode flip). */
@@ -137,22 +156,32 @@ static void chord_check(void)
         navmod_used   = 0;
         mode = (mode + 1) % MODE_COUNT;
         leds_set_mode(mode);
+        underglow_set_mode(mode);
+        return;
+    }
+
+    /* 3+12 (opposite diagonal): cycle underglow brightness, every mode. */
+    if (kstate[KEY_TR] == K_PENDING && kstate[KEY_BL] == K_PENDING) {
+        consume_pair(KEY_TR, KEY_BL);
+        flush_notes();
+        underglow_cycle_brightness();
         return;
     }
 
     if (mode == MODE_DRUM) {
+        /* 0+3 is a sustained modifier: while both are held, keys 1/5
+         * scroll by one row; if no row sub-key is used, releasing the
+         * pair scrolls a full page up (see modes_task()). */
         if (kstate[KEY_TL] == K_PENDING && kstate[KEY_TR] == K_PENDING) {
             consume_pair(KEY_TL, KEY_TR);
-            midi_send_cc(CH_DRUM, CC_PAGE_UP, 127);
-            return;
-        }
-        /* 12+15 is a sustained modifier: while both are held, keys 9/13
-         * scroll by one row; if no row sub-key is used, releasing the
-         * pair scrolls a full page down (see modes_task()). */
-        if (kstate[KEY_BL] == K_PENDING && kstate[KEY_BR] == K_PENDING) {
-            consume_pair(KEY_BL, KEY_BR);
             navmod_active = 1;
             navmod_used   = 0;
+            return;
+        }
+        /* 12+15: immediate page down. */
+        if (kstate[KEY_BL] == K_PENDING && kstate[KEY_BR] == K_PENDING) {
+            consume_pair(KEY_BL, KEY_BR);
+            midi_send_cc(CH_DRUM, CC_PAGE_DOWN, 127);
             return;
         }
     }
@@ -170,6 +199,7 @@ void modes_init(void)
         ktimer[k] = 0;
     }
     leds_set_mode(mode);
+    underglow_set_mode(mode);
 }
 
 void modes_task(void)
@@ -182,7 +212,7 @@ void modes_task(void)
     last_state = state;
 
     /* 1. New presses: corner keys wait for a possible chord, others fire.
-     * While the 12+15 drum-nav modifier is held, keys 9/13 are stolen to
+     * While the 0+3 drum-nav modifier is held, keys 1/5 are stolen to
      * scroll one row instead of playing a pad. */
     for (k = 0; k < KEY_COUNT; k++) {
         if (pressed & (1u << k)) {
@@ -221,11 +251,11 @@ void modes_task(void)
     /* 4. Releases. */
     for (k = 0; k < KEY_COUNT; k++) {
         if (released & (1u << k)) {
-            /* Releasing either half of the 12+15 modifier ends the hold;
-             * if no row sub-key was used, it scrolls a full page down. */
-            if (navmod_active && (k == KEY_BL || k == KEY_BR)) {
+            /* Releasing either half of the 0+3 modifier ends the hold;
+             * if no row sub-key was used, it scrolls a full page up. */
+            if (navmod_active && (k == KEY_TL || k == KEY_TR)) {
                 if (!navmod_used)
-                    midi_send_cc(CH_DRUM, CC_PAGE_DOWN, 127);
+                    midi_send_cc(CH_DRUM, CC_PAGE_UP, 127);
                 navmod_active = 0;
                 navmod_used   = 0;
             }

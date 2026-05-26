@@ -10,6 +10,9 @@
  *   USB        : D+ = PD2 (INT0), D- = PD3   (ps2avrGB convention;
  *                also configured in usbconfig.h)
  *   Backlight  : single LED on PD4 (= OC1B, Timer1 PWM)
+ *   Underglow  : 4 WS2812 LEDs driven by an on-board ATtiny85, addressed
+ *                over I2C/TWI (PC0 = SCL, PC1 = SDA). ATtiny slave addr
+ *                is 0xB0 (write form).
  *
  * Key index numbering used throughout the firmware (row*4 + col):
  *      0  1  2  3
@@ -41,5 +44,10 @@
 #define LED_DDR    DDRD
 #define LED_PORT   PORTD
 #define LED_BIT    4   /* D4 */
+
+/* --- RGB underglow: 4 WS2812s behind an ATtiny85 I2C slave on PC0/PC1.
+ *     ATmega32A TWI hardware peripheral handles the pins. ---            */
+#define UNDERGLOW_I2C_ADDR   0xB0   /* QMK convention: 8-bit, write form */
+#define UNDERGLOW_LED_COUNT  4
 
 #endif /* BOARD_H */
