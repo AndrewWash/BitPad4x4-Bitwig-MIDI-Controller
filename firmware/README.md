@@ -7,10 +7,6 @@ The ATmega32A has no USB hardware, so USB is done in software with the
 **V-USB** library. QMK's MIDI feature does not support V-USB boards — this is
 standalone firmware, not a QMK keymap.
 
-> **Build status:** the source has not been compiled in the environment where
-> it was written (no AVR toolchain was installed there). Run `make` and report
-> any errors — see *Troubleshooting* below.
-
 ## What it does
 
 Three modes, cycled by a chord:
@@ -25,7 +21,10 @@ The pad layout is aligned to the on-screen Drum Machine grid: the macropad's
 top row plays the Drum Machine's top row. Drum notes follow the bank's scroll
 position (set by the Bitwig script), so paging/rowing changes which pads play.
 
-**Chords** (only the four corner keys 0 / 3 / 12 / 15 take part):
+**Corner-key chords** — the chord family that uses only the four corner
+keys (0 / 3 / 12 / 15). Additional non-corner chord families (`1 + X`,
+`5 + X`, `1 + 10` for device delete) are described in the sections that
+follow.
 
 | Keys | Action |
 |---|---|
@@ -33,6 +32,7 @@ position (set by the Bitwig script), so paging/rowing changes which pads play.
 | 3 + 12 | Cycle underglow brightness (5 levels, any mode) |
 | 0 + 3  | Drum-nav modifier (drum mode only) — see below |
 | 12 + 15 | Drum page down — `CC 17` (drum mode only) |
+| 3 + 15 | Toggle drum-mode quick-flip macros (drum mode only) — see below |
 
 **Drum-nav modifier** — hold `0 + 3`, then:
 
@@ -41,6 +41,65 @@ position (set by the Bitwig script), so paging/rowing changes which pads play.
 | (release with no sub-key) | Drum page up — `CC 16` |
 | tap key 1 | Scroll one row up — `CC 18` |
 | tap key 5 | Scroll one row down — `CC 19` |
+
+**Drum-mode quick-flip macros (`1 + X` and `5 + X`)** — in drum mode, press
+key 1 *or* key 5 together with a target key (within the ~30 ms chord
+window) to fire a transport / clip / scene command *instead of* the two
+drum pads. Lets you record clips, run transport, and launch scenes
+without leaving the drum page. CCs go out on **MIDI channel 3 (clip-nav)**
+so the existing Bitwig script handlers run unchanged.
+
+Default state is **enabled** (underglow stays blue). The `3 + 15` chord
+toggles the entire feature off (both `1+X` macros AND `5+X` scenes);
+underglow flips to **amber** as the off indicator. While disabled, the
+chord shortcuts go away and every key plays its plain drum note (current
+pre-feature behavior), so drumming patterns that include keys 1 or 5 work
+without surprises. Power-up always starts enabled. Armed state persists
+across mode flips.
+
+| `1 + X` chord (when enabled) | Action | CC on MIDI ch 3 |
+|---|---|---|
+| 1 + 0  | Global play | 31 |
+| 1 + 2  | Global stop | 32 |
+| 1 + 3  | Global record toggle | 33 |
+| 1 + 4  | Clip selection left | 39 |
+| 1 + 6  | Clip selection right | 40 |
+| 1 + 7  | Global undo | 34 |
+| 1 + 8  | Toggle arm (cursor track) | 35 |
+| 1 + 9  | Toggle clip-launcher overdub | 36 |
+| 1 + 10 | Delete focused clip | 41 |
+| 1 + 11 | State-aware looper | 42 |
+| 1 + 12 | Play focused clip | 43 |
+| 1 + 13 | Stop focused clip / track | 44 |
+| 1 + 14 | Record into focused clip | 45 |
+| 1 + 15 | Create new (empty) clip | 46 |
+
+**Scene launcher (`5 + X`)** — works in **both drum mode and clip-nav
+mode**. In drum mode it's gated by the `3 + 15` toggle along with the
+`1 + X` macros. In clip-nav mode it's **always on** (no toggle there) —
+the trade-off is that keys 5 and 8–15 in clip-nav now incur the ~30 ms
+chord hold, but quick taps still fire on release so clip launching feels
+unchanged.
+
+| `5 + X` chord | Action | CC on MIDI ch 3 |
+|---|---|---|
+| 5 + 8  | Launch scene 1 | 60 |
+| 5 + 9  | Launch scene 2 | 61 |
+| 5 + 10 | Launch scene 3 | 62 |
+| 5 + 11 | Launch scene 4 | 63 |
+| 5 + 12 | Launch scene 5 | 64 |
+| 5 + 13 | Launch scene 6 | 65 |
+| 5 + 14 | Launch scene 7 | 66 |
+| 5 + 15 | Launch scene 8 | 67 |
+
+**Device-mode chord** — one chord lives on the device page: press key 1
+together with key 10 within the chord window to delete the currently
+selected device. Solo behavior is unchanged (key 1 = Track up, key 10 =
+Show / hide device window).
+
+| Chord    | Action                  | CC on MIDI ch 2 |
+|----------|-------------------------|-----------------|
+| 1 + 10   | Delete current device   | 29              |
 
 **Device-mode key map** (momentary `CC = 127` on press, MIDI ch 2):
 
@@ -75,9 +134,13 @@ position (set by the Bitwig script), so paging/rowing changes which pads play.
 ```
  0 play          1 trackUp       2 stop          3 record
  4 clipLeft      5 trackDown     6 clipRight     7 undo
- 8 arm           9 overdub      10 (reserved)   11 looper
+ 8 arm           9 overdub      10 clipDelete   11 looper
 12 clipPlay     13 clipStop     14 clipRec      15 clipNew
 ```
+
+Plus the **5+X scene launcher** (always on in clip-nav, see Drum-mode
+quick-flip section above): hold key 5 and tap one of keys 8..15 to launch
+scenes 1..8 (CCs 60..67).
 
 | Key | Command | CC |
 |---|---|---|
@@ -91,7 +154,7 @@ position (set by the Bitwig script), so paging/rowing changes which pads play.
 | 7 | Global undo | 34 |
 | 8 | Toggle arm (cursor track) | 35 |
 | 9 | Toggle clip-launcher overdub | 36 |
-| 10 | Reserved — assigned for future script-side use | 41 |
+| 10 | Delete focused clip | 41 |
 | 11 | **Looper** (state-aware: arm > rec > play > overdub) | 42 |
 | 12 | Play focused clip | 43 |
 | 13 | Stop focused clip / track | 44 |
@@ -101,12 +164,24 @@ position (set by the Bitwig script), so paging/rowing changes which pads play.
 Shared CCs (Global play / stop / record / undo / arm / overdub) are
 identical between device mode and clip-nav mode. The script dispatches
 purely by CC, so the same action is triggered regardless of which mode
-produced it. All 16 keys in device and clip-nav modes are CC-assigned —
-adding behaviour to the "reserved" key 10 of clip-nav is a script-only
-change, no re-flash needed.
+produced it. All 16 keys in device and clip-nav modes are CC-assigned.
 
-A corner key's note/CC is delayed ~30 ms (the chord window); the other 12
-keys fire instantly.
+**Chord-window latency.** Corner keys (0/3/12/15) are always delayed
+~30 ms so they can take part in chord detection; the other keys fire
+instantly *except* in two cases where they also need to participate in
+chord-press macros:
+
+- **Drum mode while armed** — every key except 5 picks up a chord
+  window so `1 + X` and `5 + X` chords are detectable. The 3+15 toggle
+  removes the delay entirely.
+- **Clip-nav mode** — keys 5 and 8..15 always carry the chord window
+  for `5 + X` scene chords. No toggle here; scenes are always on.
+- **Device mode** — keys 1 and 10 carry the chord window for the
+  `1 + 10` delete-device chord. Other keys fire instantly.
+
+In every case, a quick tap still fires *on release* (well inside 30 ms),
+so the delay is only perceptible when a key is held alone past the
+window.
 
 ## Files
 
@@ -177,15 +252,26 @@ Build the confidence up in stages — don't debug everything at once:
 1. **Enumeration.** Flash, then check Windows *Device Manager* → *Sound,
    video and game controllers*: a device named **JJ4x4 MIDI** appears with
    no yellow `!`. A `!` means a USB descriptor or V-USB timing problem.
-2. **Raw MIDI.** Install **MIDI-OX** (free). Open the *JJ4x4 MIDI* input and
-   its monitor window. Press each key — you should see Note On/Off (drum
-   mode) with no chatter or stuck notes. Test the chords: `0+15` flip
-   (cycles backlight brightness *and* underglow color), `12+15` page down
-   (`CC 17`), `0+3` held then released with no sub-key → page up
-   (`CC 16`), `0+3` held + tap `1` → row up (`CC 18`), `0+3` held + tap
-   `5` → row down (`CC 19`). Confirm the old `12+15+9` / `12+15+13`
-   chords no longer fire `CC 18/19`. In device + clip-nav modes, confirm
-   every key sends its assigned CC.
+2. **Raw MIDI.** Install **MIDI-OX** (free). Open the *JJ4x4 MIDI* input
+   and its monitor window. Press each key — you should see Note On/Off
+   (drum mode) with no chatter or stuck notes. Test the chords:
+   - `0+15` flip (cycles backlight brightness *and* underglow color),
+   - `12+15` page down (`CC 17`),
+   - `0+3` held then released with no sub-key → page up (`CC 16`),
+   - `0+3` held + tap `1` → row up (`CC 18`),
+   - `0+3` held + tap `5` → row down (`CC 19`),
+   - `3+15` → underglow toggles blue ↔ amber (drum-mode quick-flip
+     enable/disable),
+   - Armed (blue) `1 + X` chords → each fires its CC on channel 3
+     (see the `1 + X` table above),
+   - Armed `5 + X` chords → CCs 60..67 on channel 3,
+   - Disarmed (amber): `1 + X` and `5 + X` play both keys as plain drum
+     pads — no CCs on channel 3.
+   In device + clip-nav modes, confirm every key sends its assigned CC.
+   In clip-nav, `5 + X` chords fire scenes regardless of any toggle.
+   In device mode: tap key 1 → `CC 20` (track up); tap key 10 → `CC 30`
+   (device window); press 1+10 within the chord window → `CC 29` on
+   channel 2 (delete current device).
 3. **Underglow.** On boot the 4 underglow LEDs light **blue** at medium
    brightness. `0+15` should cycle the color blue → green → magenta →
    blue in lock-step with the backlight. `3+12` (opposite diagonal)

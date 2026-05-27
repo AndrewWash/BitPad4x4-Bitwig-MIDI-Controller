@@ -5,18 +5,25 @@
 //   - Note On/Off   : drum pads (notes 36..51) — routed to the selected
 //                     instrument / Drum Machine via a NoteInput whose
 //                     key-translation table tracks the drum bank scroll.
-//   - Control Change: navigation commands — handled in onMidi(). The CC
-//                     numbers MUST match firmware/modes.c.
+//   - Control Change: navigation, transport, clip ops, scenes, and the
+//                     drum-mode quick-flip macros — handled in onMidi().
+//                     The CC numbers MUST match firmware/modes.c.
 //
 // Three firmware modes (cycle with the 0+15 chord on the pad):
-//   - Drum mode    : pads play; chords scroll the drum bank.
-//   - Device mode  : 16 keys = device + transport navigation CCs.
+//   - Drum mode    : pads play; chords scroll the drum bank; 1+X and 5+X
+//                    chord-press macros (toggle with 3+15) borrow the
+//                    clip-nav transport / clip / scene actions without
+//                    leaving drum mode.
+//   - Device mode  : 16 keys = device + transport navigation CCs, plus
+//                    the 1+10 chord which deletes the current device.
 //   - Clip-nav mode: 16 keys = clip-launcher selection, deterministic
-//                    play/stop/record/new, plus a state-aware looper key.
+//                    play/stop/record/delete/new, state-aware looper, and
+//                    the always-on 5+X scene launcher.
 //
 // CCs are SHARED across modes for shared actions (e.g. Global Play is the
-// same CC whether sent from device-mode key 0 or clip-nav-mode key 0). The
-// script dispatches purely by CC and doesn't care which mode produced it.
+// same CC whether sent from device-mode key 0, clip-nav-mode key 0, or
+// drum-mode 1+0). The script dispatches purely by CC and doesn't care
+// which mode produced it.
 //
 // Install: copy this folder into your Bitwig "Controller scripts" directory,
 // then add it in Bitwig under Settings > Controllers and select the
@@ -57,7 +64,7 @@ const CC_NEXT_DEVICE    = 25;
 const CC_INSERT_DEV     = 26;
 const CC_DEV_EXPAND     = 27;
 const CC_DEV_REMOTES    = 28;
-/* CC 29 was CC_DEV_NESTED — reserved, unused. */
+const CC_DEV_DELETE     = 29;   /* device 1+10: delete current device */
 const CC_DEV_WINDOW     = 30;
 /* Shared transport (device + clip-nav modes) */
 const CC_PLAY           = 31;
@@ -70,12 +77,15 @@ const CC_OVERDUB        = 36;
  * (same action as device-mode 1/5), so CCs 37 and 38 are unused. */
 const CC_CLIP_LEFT      = 39;   /* clip-nav key 4: focus prev slot */
 const CC_CLIP_RIGHT     = 40;   /* clip-nav key 6: focus next slot */
-const CC_CLIP_RESERVED  = 41;   /* clip-nav key 10 — unused for now */
+const CC_CLIP_DELETE    = 41;   /* clip-nav key 10 (or drum 1+10): delete focused clip */
 const CC_LOOPER         = 42;
 const CC_CLIP_PLAY      = 43;
 const CC_CLIP_STOP      = 44;
 const CC_CLIP_REC       = 45;
 const CC_CLIP_NEW       = 46;
+/* Scene launcher: 5+X in drum (when armed) or clip-nav (always). */
+const CC_SCENE_BASE     = 60;   /* CC 60..67 = scenes 1..8 */
+const SCENE_COUNT       = 8;
 
 /* The 16 drum pads always arrive as notes 36..51 (DRUM_LO..DRUM_HI). They are
  * remapped so firmware note 36 lands on the drum bank's scroll position — the
@@ -91,6 +101,7 @@ const CLIP_SLOTS = 16;
 let transport, application;
 let cursorTrack, cursorDevice, remotePages, drumBank, endInsertion, noteInput;
 let clipSlotBank, focusedSlotIndex;
+let sceneBank;
 
 function init() {
     const midiIn = host.getMidiInPort(0);
@@ -151,6 +162,11 @@ function init() {
         slot.isRecording().markInterested();
         slot.isPlaying().markInterested();
     }
+
+    /* Scene bank for the 5+X scene launcher (drum mode when armed, and
+     * clip-nav always). 8 scenes mapped 1:1 to keys 8..15 on the
+     * macropad. */
+    sceneBank = host.createSceneBank(SCENE_COUNT);
 
     host.showPopupNotification("jj4x4 MIDI Controller ready");
 }
@@ -235,6 +251,7 @@ function onMidi(status, data1, data2) {
     case CC_INSERT_DEV:     endInsertion.browse();                break;
     case CC_DEV_EXPAND:     cursorDevice.isExpanded().toggle();   break;
     case CC_DEV_REMOTES:    cursorDevice.isRemoteControlsSectionVisible().toggle(); break;
+    case CC_DEV_DELETE:     cursorDevice.deleteObject();          break;
     case CC_DEV_WINDOW:     cursorDevice.isWindowOpen().toggle(); break;
 
     /* Shared transport */
@@ -260,10 +277,16 @@ function onMidi(status, data1, data2) {
     /* Clip-nav: state-aware looper */
     case CC_LOOPER:         looperPress();                        break;
 
-    /* Reserved — assigned in firmware so future use is script-only. */
-    case CC_CLIP_RESERVED:  /* intentional no-op */               break;
+    /* Delete the focused clip slot's contents. Fires from clip-nav key
+     * 10 directly, or from drum mode 1+10 when quick-flip is armed. */
+    case CC_CLIP_DELETE:    focusedSlot().deleteObject();         break;
 
-    default: break;
+    default:
+        /* Scene launcher: CCs 60..67 map to scenes 1..8. */
+        if (data1 >= CC_SCENE_BASE && data1 < CC_SCENE_BASE + SCENE_COUNT) {
+            sceneBank.getScene(data1 - CC_SCENE_BASE).launch();
+        }
+        break;
     }
 }
 

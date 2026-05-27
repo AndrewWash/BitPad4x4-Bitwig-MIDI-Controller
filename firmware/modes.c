@@ -3,30 +3,46 @@
  * Three modes, cycled by the mode-flip chord (extensible: add entries to the
  * mode enum and the dispatch in emit_press/emit_release):
  *
- *   MODE_DRUM    - all 16 keys are drum pads -> Note On/Off, MIDI channel 1.
- *                  Nav chords scroll the Bitwig Drum Machine's pad pages.
- *   MODE_DEVICE  - 16 keys send momentary CCs (MIDI channel 2) that the
- *                  Bitwig controller script turns into device + transport
- *                  navigation. Every key has a CC so future tweaks are
- *                  script-only (no re-flash).
- *   MODE_CLIPNAV - 16 keys send momentary CCs (MIDI channel 3) for a
- *                  streamlined clip-launcher create/record/play workflow,
- *                  including a state-aware looper key.
+ *   MODE_DRUM    - 16 drum pads -> Note On/Off, MIDI channel 1. Page/row
+ *                  chords scroll the Bitwig Drum Machine. Quick-flip chord
+ *                  families (1+X, 5+X) let drum mode emit clip-nav CCs
+ *                  without leaving the page; gated by a 3+15 toggle.
+ *   MODE_DEVICE  - 16 keys send momentary CCs (MIDI channel 2). One chord
+ *                  (1+10) deletes the current device. Other keys fire solo.
+ *   MODE_CLIPNAV - 16 keys send momentary CCs (MIDI channel 3) for clip
+ *                  navigation, transport, the state-aware looper, and clip
+ *                  delete. Always-on 5+X scene chord launches scenes 1..8.
  *
- * Chords (only the four corner keys 0/3/12/15 take part):
- *   keys 0 + 15 -> flip to the next mode                 (any mode)
- *   keys 3 + 12 -> cycle underglow brightness (5 levels) (any mode)
- *   keys 0 + 3  -> drum-nav modifier                     (drum mode only)
- *   keys 12 + 15-> drum page down (CC 17, immediate)     (drum mode only)
+ * Chord taxonomy (CHORD_TICKS ~30 ms window):
  *
- * The 0+3 modifier is sustained: while both keys are held, key 1 scrolls
- * one row up (CC 18) and key 5 one row down (CC 19). Releasing the pair
+ *   Corner-only chords (any mode):
+ *     0 + 15 -> cycle mode (drum > device > clip-nav)
+ *     3 + 12 -> cycle underglow brightness (5 levels)
+ *
+ *   Drum-mode chords:
+ *     0 + 3   -> sustained nav modifier (see below)
+ *     12 + 15 -> drum page down (CC 17)
+ *     3 + 15  -> toggle drum quick-flip macros (blue <-> amber underglow)
+ *     1 + X   -> 14 transport/clip macros via clipnav_cc[X], CH_CLIPNAV
+ *                X in {0,2,3,4,6,7,8,9,10,11,12,13,14,15} -- when armed
+ *     5 + X   -> launch scenes 1..8 via scene_cc[X-8], CH_CLIPNAV
+ *                X in {8..15} -- when armed
+ *
+ *   Clip-nav-mode chord (always on, no toggle):
+ *     5 + X   -> scene launch, same mapping as drum's 5+X
+ *
+ *   Device-mode chord:
+ *     1 + 10  -> delete current device (CC_DEV_DELETE on CH_DEVICE)
+ *
+ * The 0+3 nav modifier is sustained: while both are held, key 1 scrolls
+ * one row up (CC 18), key 5 one row down (CC 19). Releasing the pair
  * with no row sub-key used scrolls a full page up (CC 16).
  *
- * A corner key's note/CC is held back for CHORD_TICKS ms: if a second key
- * completes a chord in that window the chord fires and both keys are
- * suppressed; otherwise the key's normal action is emitted (slightly late).
- * The 12 non-corner keys fire immediately.
+ * Keys that take part in chord detection enter K_PENDING and are held
+ * back for CHORD_TICKS so the chord can form. Quick taps still emit on
+ * release, so the only perceptible latency is when a chord-eligible key
+ * is held alone past the window. See needs_chord_window() for the
+ * per-mode predicate.
  */
 #include "modes.h"
 #include "matrix.h"
@@ -52,6 +68,9 @@ enum { MODE_DRUM = 0, MODE_DEVICE, MODE_CLIPNAV, MODE_COUNT };
 /* ---- Drum-nav modifier sub-keys (held 0+3 + one of these) ---- */
 #define KEY_ROW_UP       1
 #define KEY_ROW_DOWN     5
+
+/* ---- Device-mode chord CC (only emitted by the 1+10 chord) ---- */
+#define CC_DEV_DELETE   29       /* delete current device (was reserved) */
 
 /* ---- Corner keys ---- */
 #define KEY_TL   0
@@ -91,10 +110,54 @@ static uint16_t last_state;              /* matrix state from prev tick   */
 static uint16_t notes_on;                /* drum notes currently sounding */
 static uint8_t  navmod_active;           /* 1 while 0+3 are both held     */
 static uint8_t  navmod_used;             /* 1 if a row sub-key fired      */
+static uint8_t  armed;                   /* drum quick-flip macros on/off */
 
 static uint8_t is_corner(uint8_t k)
 {
     return (k == KEY_TL || k == KEY_TR || k == KEY_BL || k == KEY_BR);
+}
+
+/* Drum quick-flip "1+X" macro partner keys (every key except 1 and 5).
+ * When drum mode is `armed`, pressing key 1 + one of these within
+ * CHORD_TICKS fires the partner's clip-nav CC on CH_CLIPNAV in place of
+ * the two drum pads. Mask: all 16 bits except 1 and 5 = 0xFFDD. */
+static uint8_t is_macro_partner(uint8_t k)
+{
+    return ((1u << k) & 0xFFDDu) != 0;
+}
+
+/* "5+X" scene-launcher partner keys: bottom 8 pads (keys 8..15). Pressing
+ * key 5 + one of these fires its scene CC on CH_CLIPNAV. Active in drum
+ * mode while armed and ALWAYS in clip-nav mode. Mask: bits 8..15 = 0xFF00. */
+static uint8_t is_scene_partner(uint8_t k)
+{
+    return ((1u << k) & 0xFF00u) != 0;
+}
+
+/* Scene CCs sent on CH_CLIPNAV for 5+X chords. Indexed by partner key
+ * minus 8 (so key 8 -> scene 1 -> CC 60, ..., key 15 -> scene 8 -> CC 67).
+ * Lives in a 15-CC gap above the clip CCs (which run 31..46) so room
+ * remains to add more clip-ops before bumping into the scene range. */
+static const uint8_t scene_cc[8] = {
+    60, 61, 62, 63, 64, 65, 66, 67,
+};
+
+/* Does this key need to enter K_PENDING so it can take part in a 1+X or
+ * 5+X chord? Independent of the corner/chord-window logic, which already
+ * delays the four corner keys for the existing pre-feature chords. */
+static uint8_t needs_chord_window(uint8_t k)
+{
+    if (mode == MODE_DRUM && armed) {
+        return (k == 1 || k == 5 || is_macro_partner(k) || is_scene_partner(k));
+    }
+    if (mode == MODE_CLIPNAV) {
+        return (k == 5 || is_scene_partner(k));
+    }
+    if (mode == MODE_DEVICE) {
+        /* Only chord on device mode is 1+10 = delete device. */
+        return (k == 1 || k == 10);
+    }
+    return 0;
 }
 
 /* Physical key -> Drum Machine note. The macropad's top row is the Drum
@@ -145,6 +208,38 @@ static void consume_pair(uint8_t a, uint8_t b)
     kstate[b] = K_CONSUMED;
 }
 
+/* "1+X" macro chord scan: when key 1 is pending, look for a macro partner
+ * also pending and fire its clip-nav CC. Returns 1 if a chord fired. */
+static uint8_t try_clip_macro_chord(void)
+{
+    if (kstate[1] != K_PENDING) return 0;
+    for (uint8_t p = 0; p < KEY_COUNT; p++) {
+        if (p == 1 || !is_macro_partner(p)) continue;
+        if (kstate[p] == K_PENDING) {
+            consume_pair(1, p);
+            midi_send_cc(CH_CLIPNAV, clipnav_cc[p], 127);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* "5+X" scene chord scan: when key 5 is pending, look for a scene partner
+ * also pending and launch its scene CC. Returns 1 if a chord fired. */
+static uint8_t try_scene_chord(void)
+{
+    if (kstate[5] != K_PENDING) return 0;
+    for (uint8_t p = 0; p < KEY_COUNT; p++) {
+        if (p == 5 || !is_scene_partner(p)) continue;
+        if (kstate[p] == K_PENDING) {
+            consume_pair(5, p);
+            midi_send_cc(CH_CLIPNAV, scene_cc[p - 8], 127);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* Look for a completed chord among the keys currently in K_PENDING. */
 static void chord_check(void)
 {
@@ -178,10 +273,40 @@ static void chord_check(void)
             navmod_used   = 0;
             return;
         }
+        /* 3+15: toggle quick-flip macros. Underglow flips to amber when
+         * disarmed so the off state is visible at a glance. */
+        if (kstate[KEY_TR] == K_PENDING && kstate[KEY_BR] == K_PENDING) {
+            consume_pair(KEY_TR, KEY_BR);
+            flush_notes();
+            armed ^= 1;
+            underglow_set_armed(armed);
+            return;
+        }
         /* 12+15: immediate page down. */
         if (kstate[KEY_BL] == K_PENDING && kstate[KEY_BR] == K_PENDING) {
             consume_pair(KEY_BL, KEY_BR);
             midi_send_cc(CH_DRUM, CC_PAGE_DOWN, 127);
+            return;
+        }
+        /* 1+X clip macros + 5+X scene launches. Both gated by `armed`
+         * in drum mode (3+15 toggles them off together). Order: clip
+         * macros first so a 1+0/2/etc. pairing wins over a 5+(same
+         * key) race; in practice the two modifiers won't be held at
+         * once but this keeps the precedence explicit. */
+        if (armed) {
+            if (try_clip_macro_chord()) return;
+            if (try_scene_chord())      return;
+        }
+    } else if (mode == MODE_CLIPNAV) {
+        /* Clip-nav scenes are always on - no toggle, no `armed` gate.
+         * Required keys (5 and 8..15) get K_PENDING via the press
+         * loop's needs_chord_window() branch. */
+        if (try_scene_chord()) return;
+    } else if (mode == MODE_DEVICE) {
+        /* 1+10: delete the currently selected device. */
+        if (kstate[1] == K_PENDING && kstate[10] == K_PENDING) {
+            consume_pair(1, 10);
+            midi_send_cc(CH_DEVICE, CC_DEV_DELETE, 127);
             return;
         }
     }
@@ -194,6 +319,7 @@ void modes_init(void)
     notes_on      = 0;
     navmod_active = 0;
     navmod_used   = 0;
+    armed         = 1;            /* quick-flip macros default on */
     for (uint8_t k = 0; k < KEY_COUNT; k++) {
         kstate[k] = K_IDLE;
         ktimer[k] = 0;
@@ -223,7 +349,12 @@ void modes_task(void)
                              127);
                 navmod_used = 1;
                 kstate[k]   = K_CONSUMED;
-            } else if (is_corner(k)) {
+            } else if (is_corner(k) || needs_chord_window(k)) {
+                /* Corner keys take part in the original chords; the
+                 * extra keys flagged by needs_chord_window() take part
+                 * in 1+X / 5+X chords (drum-armed, or clip-nav scenes).
+                 * Pads/CCs still fire on release via the K_PENDING
+                 * release path, or on timeout. */
                 kstate[k] = K_PENDING;
                 ktimer[k] = CHORD_TICKS;
             } else {

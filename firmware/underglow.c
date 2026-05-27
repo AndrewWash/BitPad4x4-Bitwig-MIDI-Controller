@@ -43,6 +43,7 @@ static const uint8_t brightness_scale[] = {
 /* ---- Persistent state across calls. ---- */
 static uint8_t cur_mode             = 0;
 static uint8_t cur_brightness_level = BRIGHTNESS_DEFAULT;
+static uint8_t cur_armed            = 1;   /* drum-mode quick-flip on (blue) */
 
 /* ---- TWI primitives (master mode, bounded busy-wait). ---- */
 
@@ -95,13 +96,22 @@ static uint8_t i2c_write(uint8_t addr, const uint8_t *data, uint8_t len)
 /* ---- Render the current (mode, brightness) to the LEDs. ---- */
 static void render(void)
 {
+    /* Amber shown in drum mode when quick-flip macros are disabled. Same
+     * ~80 peak as the regular mode colors so the brightness budget is
+     * unchanged. Visible only in drum mode; other modes use their own
+     * color regardless of cur_armed. */
+    static const uint8_t disarmed_color[3] = { 80, 30, 0 };
+
     uint8_t r, g, b;
 
     if (cur_mode < MODE_COLOR_COUNT) {
         uint8_t s = brightness_scale[cur_brightness_level];
-        r = ((uint16_t)mode_colors[cur_mode][0] * s) >> 8;
-        g = ((uint16_t)mode_colors[cur_mode][1] * s) >> 8;
-        b = ((uint16_t)mode_colors[cur_mode][2] * s) >> 8;
+        const uint8_t *src = (!cur_armed && cur_mode == 0)
+                             ? disarmed_color
+                             : mode_colors[cur_mode];
+        r = ((uint16_t)src[0] * s) >> 8;
+        g = ((uint16_t)src[1] * s) >> 8;
+        b = ((uint16_t)src[2] * s) >> 8;
     } else {
         r = g = b = 0;                              /* unknown mode: off */
     }
@@ -132,6 +142,7 @@ void underglow_init(void)
 
     cur_mode             = 0;
     cur_brightness_level = BRIGHTNESS_DEFAULT;
+    cur_armed            = 1;
     render();
 }
 
@@ -144,5 +155,11 @@ void underglow_set_mode(uint8_t mode)
 void underglow_cycle_brightness(void)
 {
     cur_brightness_level = (cur_brightness_level + 1) % BRIGHTNESS_LEVELS;
+    render();
+}
+
+void underglow_set_armed(uint8_t armed)
+{
+    cur_armed = armed ? 1 : 0;
     render();
 }

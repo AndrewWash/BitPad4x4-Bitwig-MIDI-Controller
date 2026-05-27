@@ -50,30 +50,99 @@ The 16 keys are numbered 0–15:
 12  13  14  15
 ```
 
-Press **`0 + 15`** to cycle modes (drum → device → clip-nav → drum). The
-backlight steps through three brightness levels and the 4 underglow LEDs
-change color (blue / green / magenta) so the active mode is readable at
-a glance.
+There are **three modes** (drum / device / clip-nav). You cycle them with
+the `0 + 15` chord. The underglow color tells you which one you're in:
 
-Press **`3 + 12`** (opposite diagonal) to cycle the underglow brightness
-through 5 levels (very dim → max → wrap).
+| Mode     | Underglow | Backlight | What it sends                  |
+|----------|-----------|-----------|--------------------------------|
+| Drum     | 🟦 blue   | dim       | Notes 36–51 (MIDI ch 1)         |
+| Device   | 🟩 green  | mid       | 16 nav/transport CCs (ch 2)     |
+| Clip-nav | 🟪 magenta| bright    | 16 clip-launcher CCs (ch 3)     |
 
-### Page 1 — Drum Machine mode
+Drum-mode quick-flip macros (the `1+X` and `5+X` chords described below)
+add another color to the table: 🟧 **amber** = drum mode with quick-flip
+disabled.
 
-One-to-one pad assignments — use the macros below to navigate the Drum
-Machine. Also works as a chromatic mode for synths / note devices.
+---
 
-| Chord            | Action                                  |
-|------------------|-----------------------------------------|
-| `0 + 3`          | Move active pads up one full screen (release with no sub-key) |
-| `0 + 3` + `1`    | Move active pads up one row             |
-| `0 + 3` + `5`    | Move active pads down one row           |
-| `12 + 15`        | Move active pads down one full screen   |
+## Cheat sheet — every chord at a glance
 
-### Page 2 — Device mode
+**Universal** (work in every mode):
 
-Every pad is assigned (16/16). Adding behaviour to any pad later is a
-controller-script change, not a re-flash.
+| Chord     | Action                                  |
+|-----------|-----------------------------------------|
+| `0 + 15`  | Cycle mode (drum → device → clip-nav)   |
+| `3 + 12`  | Cycle underglow brightness (5 levels)   |
+
+**Drum mode only:**
+
+| Chord                        | Action                                                |
+|------------------------------|-------------------------------------------------------|
+| `0 + 3` (release, no sub-key)| Page up (one screen)                                  |
+| `0 + 3` + `1`                | Row up (4 pads)                                       |
+| `0 + 3` + `5`                | Row down                                              |
+| `12 + 15`                    | Page down                                             |
+| `3 + 15`                     | Toggle quick-flip macros (blue ↔ amber)               |
+| `1 + X` chords               | 14 transport/clip macros (table below) — when blue    |
+| `5 + X` chords (X = 8..15)   | Launch scenes 1–8 — when blue                         |
+
+**Clip-nav mode only:**
+
+| Chord                       | Action                                                |
+|-----------------------------|-------------------------------------------------------|
+| `5 + X` chords (X = 8..15)  | Launch scenes 1–8 — **always on, no toggle here**     |
+
+**Device mode only:**
+
+| Chord     | Action                                                |
+|-----------|-------------------------------------------------------|
+| `1 + 10`  | Delete currently selected device                      |
+
+**Drum-mode `1 + X` quick-flip macros** (blue underglow = on; 3+15 toggles):
+
+| `1 + X` | Action                            | `1 + X` | Action                  |
+|---------|-----------------------------------|---------|-------------------------|
+| `1 + 0` | Global play                       | `1 + 9` | Toggle overdub          |
+| `1 + 2` | Global stop                       | `1 + 10`| Delete focused clip     |
+| `1 + 3` | Global record                     | `1 + 11`| State-aware looper      |
+| `1 + 4` | Clip selection left               | `1 + 12`| Play focused clip       |
+| `1 + 6` | Clip selection right              | `1 + 13`| Stop focused clip/track |
+| `1 + 7` | Global undo                       | `1 + 14`| Record into focused clip|
+| `1 + 8` | Toggle arm                        | `1 + 15`| Create new clip         |
+
+**Scene launcher `5 + X`** (drum-armed and clip-nav both):
+
+| Chord    | Scene | Chord    | Scene |
+|----------|-------|----------|-------|
+| `5 + 8`  | 1     | `5 + 12` | 5     |
+| `5 + 9`  | 2     | `5 + 13` | 6     |
+| `5 + 10` | 3     | `5 + 14` | 7     |
+| `5 + 11` | 4     | `5 + 15` | 8     |
+
+How chords work: press both keys within ~30 ms and the chord fires
+instead of the individual key presses. Hold one key longer and it falls
+through to its solo action (drum note / CC). Quick taps still feel
+instant because the press fires on release, before the 30 ms timeout.
+
+---
+
+### Mode 1 — Drum Machine
+
+One-to-one pad → note assignments. The Bitwig script's key-translation
+table follows the drum bank's scroll position so the macropad's top row
+always plays the pads under the green highlight on screen. Also works as
+a chromatic mode for synths / note devices.
+
+Page/row nav lives on `0+3` and `12+15` (see cheat sheet above). The
+14 `1+X` macros plus 8 scene chords (`5+X`) let you control transport,
+clips, looper, and scenes without leaving drum mode. Press `3+15` to
+disable them when you want pure pads.
+
+### Mode 2 — Device
+
+Every pad is assigned (16/16). One chord: press `1 + 10` together to
+delete the currently selected device. Adding behaviour to any pad later
+is a controller-script change, not a re-flash.
 
 | Key  | Action                                              |
 |------|-----------------------------------------------------|
@@ -94,13 +163,16 @@ controller-script change, not a re-flash.
 | `14` | Collapse / expand device                            |
 | `15` | Next remote (parameter) page                        |
 
-### Page 3 — Clip Nav mode
+### Mode 3 — Clip Nav
 
-A streamlined create / record / play / undo workflow on the clip launcher.
-The vertical pad pair (`1`/`5`) moves the cursor track; the horizontal
-pair (`4`/`6`) moves the focused slot within that track. Keys 12-15 act
-on the focused slot. The looper key (11) is state-aware and cycles
-arm → record → play → overdub on one button.
+A streamlined create / record / play / delete / undo workflow on the
+clip launcher. The vertical pad pair (`1`/`5`) moves the cursor track;
+the horizontal pair (`4`/`6`) moves the focused slot within that track.
+Keys 12–15 act on the focused slot. The looper key (11) is state-aware
+and cycles arm → record → play → overdub on one button.
+
+Hold `5` + tap one of 8–15 to launch scenes 1–8 (always on here — no
+toggle needed since this is the clip-launcher screen).
 
 | Key  | Action                                              |
 |------|-----------------------------------------------------|
@@ -109,12 +181,12 @@ arm → record → play → overdub on one button.
 | `2`  | Global stop                                         |
 | `3`  | Global record toggle                                |
 | `4`  | Clip selection left (prev focused slot)             |
-| `5`  | Track down                                          |
+| `5`  | Track down (also: scene-launcher modifier)          |
 | `6`  | Clip selection right (next focused slot)            |
 | `7`  | Global undo                                         |
 | `8`  | Toggle arm (cursor track)                           |
 | `9`  | Toggle clip-launcher overdub                        |
-| `10` | *(reserved — CC assigned for future use)*           |
+| `10` | Delete focused clip                                 |
 | `11` | **Looper** — state-aware arm > rec > play > overdub |
 | `12` | Play focused clip                                   |
 | `13` | Stop focused clip / track                           |
@@ -122,6 +194,3 @@ arm → record → play → overdub on one button.
 | `15` | Create new (empty) clip in focused slot             |
 
 Full command map and CC numbers are in [`firmware/README.md`](firmware/README.md).
-
-The original design plan is in
-`~/.claude/plans/i-want-to-write-melodic-trinket.md`.

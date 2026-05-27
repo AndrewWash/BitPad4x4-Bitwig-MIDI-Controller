@@ -17,4 +17,10 @@ void underglow_set_mode(uint8_t mode);
  * max back to very-dim. */
 void underglow_cycle_brightness(void);
 
+/* Reflect whether drum-mode quick-flip macros are armed. armed=1 (default)
+ * renders drum mode in its normal blue; armed=0 renders drum mode in amber
+ * as the "macros disabled" indicator. Other modes ignore this flag and
+ * render their own color. */
+void underglow_set_armed(uint8_t armed);
+
 #endif /* UNDERGLOW_H */
