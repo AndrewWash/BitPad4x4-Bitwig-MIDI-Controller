@@ -250,9 +250,9 @@ board.
 Build the confidence up in stages — don't debug everything at once:
 
 1. **Enumeration.** Flash, then check Windows *Device Manager* → *Sound,
-   video and game controllers*: a device named **JJ4x4 MIDI** appears with
+   video and game controllers*: a device named **BitPad4x4 MIDI** appears with
    no yellow `!`. A `!` means a USB descriptor or V-USB timing problem.
-2. **Raw MIDI.** Install **MIDI-OX** (free). Open the *JJ4x4 MIDI* input
+2. **Raw MIDI.** Install **MIDI-OX** (free). Open the *BitPad4x4 MIDI* input
    and its monitor window. Press each key — you should see Note On/Off
    (drum mode) with no chatter or stuck notes. Test the chords:
    - `0+15` flip (cycles backlight brightness *and* underglow color),

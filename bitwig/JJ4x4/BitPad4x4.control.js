@@ -1,5 +1,6 @@
-// jj4x4 — Bitwig Studio controller script for the JJ4x4 USB-MIDI controller,
-// a KPrepublic JJ4x4 macropad (16 keys) running custom V-USB USB-MIDI firmware.
+// BitPad4x4 — Bitwig Studio controller script for the BitPad4x4 USB-MIDI
+// controller, a KPrepublic JJ4x4 macropad (16 keys) running custom V-USB
+// USB-MIDI firmware.
 //
 // The firmware sends:
 //   - Note On/Off   : drum pads (notes 36..51) — routed to the selected
@@ -27,7 +28,7 @@
 //
 // Install: copy this folder into your Bitwig "Controller scripts" directory,
 // then add it in Bitwig under Settings > Controllers and select the
-// "JJ4x4 MIDI" input port.
+// "BitPad4x4 MIDI" input port.
 //
 // Credits
 //   Hardware vendor : learninglab
@@ -37,7 +38,7 @@ loadAPI(18);
 
 host.defineController(
     "learninglab",
-    "jj4x4",
+    "BitPad4x4",
     "2.0",
     "6b1d9c20-4a3e-4f51-9c2a-1d9c204a3e4f",
     "wash"
@@ -46,7 +47,7 @@ host.defineMidiPorts(1, 0);                   /* 1 MIDI in, 0 out */
 
 /* Best-effort auto-detection by MIDI port name. Windows may name the port
  * differently; if so just pick it manually in the controller settings. */
-host.addDeviceNameBasedDiscoveryPair(["JJ4x4 MIDI"], []);
+host.addDeviceNameBasedDiscoveryPair(["BitPad4x4 MIDI"], []);
 
 /* ---- CC numbers — keep in sync with firmware/modes.c ---- */
 /* Drum-mode nav (CH 1) */
@@ -113,13 +114,13 @@ function init() {
      * they still reach onMidi(). A key-translation table (rebuilt whenever
      * the drum bank scrolls) shifts the pad notes so they always play the
      * pads under the green highlight. */
-    noteInput = midiIn.createNoteInput("JJ4x4 Pads", "8?????", "9?????");
+    noteInput = midiIn.createNoteInput("BitPad4x4 Pads", "8?????", "9?????");
 
     transport   = host.createTransport();
     application = host.createApplication();
 
     /* A cursor track that follows the selected track in Bitwig. */
-    cursorTrack = host.createCursorTrack("JJ4X4_TRACK", "jj4x4", 0, CLIP_SLOTS, true);
+    cursorTrack = host.createCursorTrack("BITPAD4X4_TRACK", "BitPad4x4", 0, CLIP_SLOTS, true);
 
     /* Arm is a per-track toggle we drive in device/clip-nav modes. */
     cursorTrack.arm().markInterested();
@@ -168,7 +169,7 @@ function init() {
      * macropad. */
     sceneBank = host.createSceneBank(SCENE_COUNT);
 
-    host.showPopupNotification("jj4x4 MIDI Controller ready");
+    host.showPopupNotification("BitPad4x4 MIDI Controller ready");
 }
 
 /* Rebuild the 128-entry key-translation table so the pad notes 36..51 are
