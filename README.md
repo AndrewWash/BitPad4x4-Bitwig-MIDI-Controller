@@ -1,4 +1,4 @@
-# JJ4x4 → Bitwig USB-MIDI Controller
+# BitPad4x4 → Bitwig USB-MIDI Controller
 
 Custom firmware that turns a **KPrepublic JJ4x4** macropad (ATmega32A, 16 keys)
 into a class-compliant **USB-MIDI controller** for **Bitwig Studio** — a Drum
