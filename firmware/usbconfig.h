@@ -52,10 +52,10 @@
 #define USB_CFG_DEVICE_ID       0xe4, 0x05     /* 0x05e4 - shared MIDI PID */
 #define USB_CFG_DEVICE_VERSION  0x00, 0x01
 
-#define USB_CFG_VENDOR_NAME     'J','J','4','x','4'
-#define USB_CFG_VENDOR_NAME_LEN 5
-#define USB_CFG_DEVICE_NAME     'J','J','4','x','4',' ','M','I','D','I'
-#define USB_CFG_DEVICE_NAME_LEN 10
+#define USB_CFG_VENDOR_NAME     'B','i','t','P','a','d','4','x','4'
+#define USB_CFG_VENDOR_NAME_LEN 9
+#define USB_CFG_DEVICE_NAME     'B','i','t','P','a','d','4','x','4',' ','M','I','D','I'
+#define USB_CFG_DEVICE_NAME_LEN 14
 
 #define USB_CFG_DEVICE_CLASS        0          /* defined at interface level */
 #define USB_CFG_DEVICE_SUBCLASS     0
