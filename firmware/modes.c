@@ -20,8 +20,8 @@
  *     3 + 12 -> cycle underglow brightness (5 levels)
  *
  *   Drum-mode chords:
- *     0 + 3   -> sustained nav modifier (see below)
- *     12 + 15 -> drum page down (CC 17)
+ *     0 + 3   -> drum page up (CC 16)
+ *     12 + 15 -> sustained nav modifier (see below)
  *     3 + 15  -> toggle drum quick-flip macros (blue <-> amber underglow)
  *     1 + X   -> 14 transport/clip macros via clipnav_cc[X], CH_CLIPNAV
  *                X in {0,2,3,4,6,7,8,9,10,11,12,13,14,15} -- when armed
@@ -34,9 +34,10 @@
  *   Device-mode chord:
  *     1 + 10  -> delete current device (CC_DEV_DELETE on CH_DEVICE)
  *
- * The 0+3 nav modifier is sustained: while both are held, key 1 scrolls
- * one row up (CC 18), key 5 one row down (CC 19). Releasing the pair
- * with no row sub-key used scrolls a full page up (CC 16).
+ * The 12+15 nav modifier is sustained: while both are held, key 9 scrolls
+ * one row up (CC 18), key 13 one row down (CC 19). Releasing the pair
+ * with no row sub-key used scrolls a full page down (CC 17). Row nav is
+ * kept off keys 1/5 so it never races the 1+X / 5+X quick-flip macros.
  *
  * Keys that take part in chord detection enter K_PENDING and are held
  * back for CHORD_TICKS so the chord can form. Quick taps still emit on
@@ -65,9 +66,9 @@ enum { MODE_DRUM = 0, MODE_DEVICE, MODE_CLIPNAV, MODE_COUNT };
 #define CC_ROW_UP       18
 #define CC_ROW_DOWN     19
 
-/* ---- Drum-nav modifier sub-keys (held 0+3 + one of these) ---- */
-#define KEY_ROW_UP       1
-#define KEY_ROW_DOWN     5
+/* ---- Drum-nav modifier sub-keys (held 12+15 + one of these) ---- */
+#define KEY_ROW_UP       9
+#define KEY_ROW_DOWN    13
 
 /* ---- Device-mode chord CC (only emitted by the 1+10 chord) ---- */
 #define CC_DEV_DELETE   29       /* delete current device (was reserved) */
@@ -264,13 +265,10 @@ static void chord_check(void)
     }
 
     if (mode == MODE_DRUM) {
-        /* 0+3 is a sustained modifier: while both are held, keys 1/5
-         * scroll by one row; if no row sub-key is used, releasing the
-         * pair scrolls a full page up (see modes_task()). */
+        /* 0+3: immediate page up. */
         if (kstate[KEY_TL] == K_PENDING && kstate[KEY_TR] == K_PENDING) {
             consume_pair(KEY_TL, KEY_TR);
-            navmod_active = 1;
-            navmod_used   = 0;
+            midi_send_cc(CH_DRUM, CC_PAGE_UP, 127);
             return;
         }
         /* 3+15: toggle quick-flip macros. Underglow flips to amber when
@@ -282,10 +280,14 @@ static void chord_check(void)
             underglow_set_armed(armed);
             return;
         }
-        /* 12+15: immediate page down. */
+        /* 12+15 is a sustained modifier: while both are held, keys 9/13
+         * scroll by one row; if no row sub-key is used, releasing the
+         * pair scrolls a full page down (see modes_task()). Kept off
+         * keys 1/5 so it never races the 1+X / 5+X quick-flip macros. */
         if (kstate[KEY_BL] == K_PENDING && kstate[KEY_BR] == K_PENDING) {
             consume_pair(KEY_BL, KEY_BR);
-            midi_send_cc(CH_DRUM, CC_PAGE_DOWN, 127);
+            navmod_active = 1;
+            navmod_used   = 0;
             return;
         }
         /* 1+X clip macros + 5+X scene launches. Both gated by `armed`
@@ -382,11 +384,11 @@ void modes_task(void)
     /* 4. Releases. */
     for (k = 0; k < KEY_COUNT; k++) {
         if (released & (1u << k)) {
-            /* Releasing either half of the 0+3 modifier ends the hold;
-             * if no row sub-key was used, it scrolls a full page up. */
-            if (navmod_active && (k == KEY_TL || k == KEY_TR)) {
+            /* Releasing either half of the 12+15 modifier ends the hold;
+             * if no row sub-key was used, it scrolls a full page down. */
+            if (navmod_active && (k == KEY_BL || k == KEY_BR)) {
                 if (!navmod_used)
-                    midi_send_cc(CH_DRUM, CC_PAGE_UP, 127);
+                    midi_send_cc(CH_DRUM, CC_PAGE_DOWN, 127);
                 navmod_active = 0;
                 navmod_used   = 0;
             }
